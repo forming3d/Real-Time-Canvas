@@ -1,0 +1,5 @@
+{
+  "name": "Real-time Canvas ",
+  "description": "A web application that allows users to draw on a canvas and stream the output in real-time to a WebSocket server, such as TouchDesigner.",
+  "requestFramePermissions": []
+}

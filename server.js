@@ -19,7 +19,7 @@ const dist = path.join(__dirname, "dist");
 console.log("Serving static from:", dist);
 app.use(express.static(dist));
 
-// healthcheck para Render
+// healthcheck (para Render)
 app.get("/healthz", (_, res) => res.send("ok"));
 
 // SPA fallback

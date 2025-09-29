@@ -8,7 +8,7 @@ import { ConnectionStatus } from './types';
 function App() {
   const [color, setColor] = useState<string>('#FFFFFF');
   const [brushSize, setBrushSize] = useState<number>(10);
-  const [wsUrl, setWsUrl] = useState<string>('ws://localhost:9980');
+  const [wsUrl, setWsUrl] = useState<string>('wss://real-time-canvas-ok.onrender.com/ws');
   const [prompt, setPrompt] = useState<string>('');
   
   const { connectionStatus, connect, disconnect, sendMessage } = useWebSocket(wsUrl);

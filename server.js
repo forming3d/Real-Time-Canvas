@@ -1,41 +1,28 @@
-const { WebSocketServer } = require('ws');
-const http = require('http');
+const path = require("path");
+const express = require("express");
+const http = require("http");
+const { WebSocketServer } = require("ws");
 
-// Create a simple HTTP server. Render needs this to perform health checks.
-const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('WebSocket server is running');
-});
+const app = express();
+const server = http.createServer(app);
 
-// Create a WebSocket server and attach it to the HTTP server.
-const wss = new WebSocketServer({ server });
-
-console.log('WebSocket server started...');
-
-wss.on('connection', (ws) => {
-  console.log('Client connected');
-
-  ws.on('message', (message) => {
-    // When a message is received, broadcast it to all other clients.
-    wss.clients.forEach((client) => {
-      // Check if the client is not the sender and is ready to receive messages.
-      if (client !== ws && client.readyState === ws.OPEN) {
-        client.send(message.toString());
-      }
-    });
-  });
-
-  ws.on('close', () => {
-    console.log('Client disconnected');
-  });
-
-  ws.on('error', (error) => {
-    console.error('WebSocket error:', error);
+// WebSocket en /ws
+const wss = new WebSocketServer({ server, path: "/ws" });
+wss.on("connection", (ws) => {
+  ws.send("connected");
+  ws.on("message", (msg) => {
+    for (const c of wss.clients) {
+      if (c !== ws && c.readyState === ws.OPEN) c.send(msg.toString());
+    }
   });
 });
 
-// Start the HTTP server. Render will provide the PORT environment variable.
-const PORT = process.env.PORT || 9980;
-server.listen(PORT, () => {
-  console.log(`Server is listening on port ${PORT}`);
-});
+// servir Vite compilado (dist/)
+const dist = path.join(__dirname, "dist");
+app.use(express.static(dist));
+app.get("/healthz", (_, res) => res.send("ok"));
+// SPA fallback
+app.get("*", (_, res) => res.sendFile(path.join(dist, "index.html")));
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, "0.0.0.0", () => console.log("listening", PORT));

@@ -111,7 +111,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             type="text"
             value={wsUrl}
             onChange={(e) => setWsUrl(e.target.value)}
-            placeholder="ws://localhost:9980"
+            placeholder="ws://real-time-canvas-ok.onrender.com/ws"
             className="bg-slate-700/50 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
             disabled={isConnected}
             />

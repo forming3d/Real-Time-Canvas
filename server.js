@@ -8,9 +8,14 @@ const server = http.createServer(app);
 
 // WS en /ws
 const wss = new WebSocketServer({ server, path: "/ws" });
+
 wss.on("connection", (ws) => {
+  ws.send(JSON.stringify({ type: "welcome", ts: Date.now() })); // TD lo ve al instante
+
   ws.on("message", (msg) => {
-    for (const c of wss.clients) if (c !== ws && c.readyState === ws.OPEN) c.send(msg.toString());
+    for (const c of wss.clients) {
+      if (c.readyState === ws.OPEN) c.send(msg.toString()); // eco a TODOS
+    }
   });
 });
 

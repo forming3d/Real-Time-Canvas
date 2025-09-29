@@ -9,16 +9,14 @@ const server = http.createServer(app);
 // WebSocket en /ws
 const wss = new WebSocketServer({ server, path: "/ws" });
 wss.on("connection", (ws) => {
-  ws.send("connected");
   ws.on("message", (msg) => {
-    for (const c of wss.clients) {
-      if (c !== ws && c.readyState === ws.OPEN) c.send(msg.toString());
-    }
+    for (const c of wss.clients) if (c !== ws && c.readyState === ws.OPEN) c.send(msg.toString());
   });
 });
 
-// servir Vite compilado (dist/)
+// servir Vite compilado
 const dist = path.join(__dirname, "dist");
+console.log("Serving static from:", dist);
 app.use(express.static(dist));
 app.get("/healthz", (_, res) => res.send("ok"));
 // SPA fallback

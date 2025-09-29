@@ -1,12 +1,22 @@
 {
-  "name": "canvas-websocket-server",
+  "name": "real-time-canvas",
+  "private": true,
   "version": "1.0.0",
-  "description": "WebSocket server for real-time canvas",
-  "main": "server.js",
   "scripts": {
+    "build": "vite build",
     "start": "node server.js"
   },
   "dependencies": {
-    "ws": "^8.17.0"
-  }
+    "express": "^4.19.2",
+    "ws": "^8.18.0",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0",
+    "@types/node": "^22.14.0"
+  },
+  "engines": { "node": ">=18" }
 }

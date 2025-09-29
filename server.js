@@ -25,5 +25,5 @@ app.get("/healthz", (_, res) => res.send("ok"));
 // SPA fallback
 app.get("*", (_, res) => res.sendFile(path.join(dist, "index.html")));
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 443;
 server.listen(PORT, "0.0.0.0", () => console.log("listening", PORT));

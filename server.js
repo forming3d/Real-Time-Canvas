@@ -6,7 +6,7 @@ const { WebSocketServer } = require("ws");
 const app = express();
 const server = http.createServer(app);
 
-// WebSocket en /ws
+// WS en /ws
 const wss = new WebSocketServer({ server, path: "/ws" });
 wss.on("connection", (ws) => {
   ws.on("message", (msg) => {
@@ -18,7 +18,10 @@ wss.on("connection", (ws) => {
 const dist = path.join(__dirname, "dist");
 console.log("Serving static from:", dist);
 app.use(express.static(dist));
+
+// healthcheck para Render
 app.get("/healthz", (_, res) => res.send("ok"));
+
 // SPA fallback
 app.get("*", (_, res) => res.sendFile(path.join(dist, "index.html")));
 

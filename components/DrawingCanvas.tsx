@@ -185,7 +185,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
   return (
     <canvas
       ref={canvasRef}
-      className="w-full h-full bg-gray-900 border-2 border-gray-700 rounded-lg shadow-inner touch-none"
+      className="w-full h-full bg-black/30 rounded-xl shadow-inner touch-none"
     />
   );
 });

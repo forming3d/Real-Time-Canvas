@@ -9,6 +9,7 @@ function App() {
   const [color, setColor] = useState<string>('#FFFFFF');
   const [brushSize, setBrushSize] = useState<number>(10);
   const [wsUrl, setWsUrl] = useState<string>('ws://localhost:9980');
+  const [prompt, setPrompt] = useState<string>('');
   
   const { connectionStatus, connect, disconnect, sendMessage } = useWebSocket(wsUrl);
   
@@ -45,18 +46,21 @@ function App() {
 
   const handleDraw = useCallback((dataUrl: string) => {
     if (connectionStatus === ConnectionStatus.CONNECTED) {
-      sendMessage(dataUrl);
+      const message = { type: 'draw', payload: dataUrl };
+      sendMessage(JSON.stringify(message));
     }
   }, [connectionStatus, sendMessage]);
 
+  const handleSendPrompt = useCallback(() => {
+    if (connectionStatus === ConnectionStatus.CONNECTED && prompt.trim() !== '') {
+      const message = { type: 'prompt', payload: prompt };
+      sendMessage(JSON.stringify(message));
+    }
+  }, [connectionStatus, sendMessage, prompt]);
+
   return (
-    <div className="min-h-screen bg-gray-900 flex flex-col md:flex-row items-stretch p-4 gap-4">
-      <header className="md:hidden flex flex-col items-center pb-4">
-        <h1 className="text-2xl font-bold text-cyan-300">Real-time Canvas</h1>
-        <p className="text-sm text-gray-400">Draw and stream to TouchDesigner</p>
-      </header>
-      
-      <div className="flex-shrink-0">
+    <div className="min-h-screen bg-slate-900 flex flex-col md:flex-row items-stretch p-4 gap-4 font-sans">
+      <div className="flex-shrink-0 w-full md:w-80">
          <ControlPanel
             color={color}
             setColor={setColor}
@@ -72,14 +76,13 @@ function App() {
             redo={redo}
             canUndo={canUndo}
             canRedo={canRedo}
+            prompt={prompt}
+            setPrompt={setPrompt}
+            sendPrompt={handleSendPrompt}
           />
       </div>
 
-      <main className="flex-grow flex flex-col bg-gray-800 p-4 rounded-lg shadow-2xl">
-        <div className="hidden md:flex flex-col items-center pb-4">
-          <h1 className="text-3xl font-bold text-cyan-300">Real-time Canvas</h1>
-          <p className="text-md text-gray-400">Draw and stream to TouchDesigner</p>
-        </div>
+      <main className="flex-grow flex flex-col">
         <div className="flex-grow w-full h-full min-h-[300px] md:min-h-0">
           <DrawingCanvas
             ref={drawingCanvasRef}

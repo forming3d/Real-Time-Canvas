@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ConnectionStatus } from '../types';
-import { ClearIcon, ConnectIcon, DisconnectIcon, ChevronDownIcon, ChevronUpIcon, UndoIcon, RedoIcon } from './icons';
+import { ClearIcon, ConnectIcon, DisconnectIcon, ChevronDownIcon, ChevronUpIcon, UndoIcon, RedoIcon, SendIcon, BrushIcon, PromptIcon, ActionsIcon } from './icons';
 
 interface ControlPanelProps {
   color: string;
@@ -17,12 +17,15 @@ interface ControlPanelProps {
   redo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  prompt: string;
+  setPrompt: (prompt: string) => void;
+  sendPrompt: () => void;
 }
 
 const StatusIndicator: React.FC<{ status: ConnectionStatus }> = ({ status }) => {
   const statusConfig = {
-    [ConnectionStatus.DISCONNECTED]: { color: 'bg-gray-500', text: 'Disconnected' },
-    [ConnectionStatus.CONNECTING]: { color: 'bg-yellow-500', text: 'Connecting...' },
+    [ConnectionStatus.DISCONNECTED]: { color: 'bg-slate-500', text: 'Disconnected' },
+    [ConnectionStatus.CONNECTING]: { color: 'bg-amber-500', text: 'Connecting...' },
     [ConnectionStatus.CONNECTED]: { color: 'bg-green-500', text: 'Connected' },
     [ConnectionStatus.ERROR]: { color: 'bg-red-500', text: 'Error' },
   };
@@ -31,20 +34,36 @@ const StatusIndicator: React.FC<{ status: ConnectionStatus }> = ({ status }) => 
 
   return (
     <div className="flex items-center space-x-2">
-      <div className={`w-3 h-3 rounded-full ${color}`}></div>
-      <span>{text}</span>
+      <div className={`w-3 h-3 rounded-full ${color} animate-pulse`}></div>
+      <span className="text-sm text-slate-400">{text}</span>
     </div>
   );
 };
 
 const PREDEFINED_COLORS = [
   '#FFFFFF', '#C1C1C1', '#636363', '#000000',
-  '#FF5A5A', '#FFB85A', '#FFFF5A', '#ADFF5A',
-  '#5AFFB8', '#5AFFFF', '#5AB8FF', '#5A5AFF',
-  '#B85AFF', '#FF5AFF', '#FF5AB8'
+  '#ef4444', '#f97316', '#eab308', '#84cc16',
+  '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6',
+  '#8b5cf6', '#d946ef', '#ec4899'
 ];
 
 const PREDEFINED_BRUSH_SIZES = [5, 10, 20, 40];
+
+const CollapsibleSection: React.FC<{ title: string; icon: React.ReactNode; isOpen: boolean; onToggle: () => void; children: React.ReactNode; }> = ({ title, icon, isOpen, onToggle, children }) => (
+    <div className="border-b border-slate-700/50">
+        <button
+            onClick={onToggle}
+            className="w-full flex justify-between items-center py-3 text-lg font-semibold focus:outline-none text-slate-200 hover:text-white transition-colors"
+        >
+            <div className="flex items-center space-x-3">
+                {icon}
+                <span className="text-base font-semibold">{title}</span>
+            </div>
+            {isOpen ? <ChevronUpIcon className="w-5 h-5 text-slate-400" /> : <ChevronDownIcon className="w-5 h-5 text-slate-400" />}
+        </button>
+        {isOpen && <div className="pb-4 pt-2 flex flex-col space-y-4">{children}</div>}
+    </div>
+);
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({
   color,
@@ -61,95 +80,118 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   redo,
   canUndo,
   canRedo,
+  prompt,
+  setPrompt,
+  sendPrompt,
 }) => {
-  const [isConnectionPanelOpen, setIsConnectionPanelOpen] = useState(false);
+  const [openSections, setOpenSections] = useState({
+    connection: true,
+    prompt: true,
+    brush: true,
+    actions: true,
+  });
+
+  const toggleSection = (section: keyof typeof openSections) => {
+    setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
   const isConnected = connectionStatus === ConnectionStatus.CONNECTED;
 
   return (
-    <div className="bg-gray-800 p-6 rounded-lg shadow-2xl flex flex-col space-y-6 w-full md:w-80">
-      <h2 className="text-2xl font-bold text-cyan-400">Controls</h2>
+    <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 p-4 rounded-xl shadow-2xl flex flex-col space-y-2 w-full h-full overflow-y-auto">
+      <h2 className="text-2xl font-bold text-center mb-4 bg-gradient-to-r from-fuchsia-500 to-cyan-500 bg-clip-text text-transparent">
+        Control Panel
+      </h2>
 
-      <div className="space-y-2">
+      <CollapsibleSection title="Connection" icon={<ConnectIcon className="w-5 h-5 text-cyan-400" />} isOpen={openSections.connection} onToggle={() => toggleSection('connection')}>
+        <div className="flex flex-col space-y-2">
+            <label htmlFor="ws-url" className="text-sm font-medium text-slate-400">WebSocket URL</label>
+            <input
+            id="ws-url"
+            type="text"
+            value={wsUrl}
+            onChange={(e) => setWsUrl(e.target.value)}
+            placeholder="ws://localhost:9980"
+            className="bg-slate-700/50 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            disabled={isConnected}
+            />
+        </div>
+        <div className="flex items-center justify-between">
+            <StatusIndicator status={connectionStatus} />
+            {isConnected ? (
+            <button
+                onClick={disconnect}
+                className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200"
+            >
+                <DisconnectIcon className="w-5 h-5" />
+                <span>Disconnect</span>
+            </button>
+            ) : (
+            <button
+                onClick={connect}
+                disabled={connectionStatus === ConnectionStatus.CONNECTING}
+                className="flex items-center space-x-2 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                <ConnectIcon className="w-5 h-5" />
+                <span>Connect</span>
+            </button>
+            )}
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="AI Prompt" icon={<PromptIcon className="w-5 h-5 text-fuchsia-400"/>} isOpen={openSections.prompt} onToggle={() => toggleSection('prompt')}>
+        <textarea
+            id="ai-prompt"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="A vibrant landscape, masterpiece..."
+            className="bg-slate-700/50 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500 h-28 resize-none"
+            aria-label="AI Prompt for Stable Diffusion"
+        />
         <button
-          onClick={() => setIsConnectionPanelOpen(!isConnectionPanelOpen)}
-          className="w-full flex justify-between items-center text-lg font-semibold border-b border-gray-600 pb-2 focus:outline-none"
+            onClick={sendPrompt}
+            disabled={!isConnected || prompt.trim() === ''}
+            className="flex items-center justify-center space-x-2 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <span>Connection</span>
-          {isConnectionPanelOpen ? <ChevronUpIcon className="w-5 h-5" /> : <ChevronDownIcon className="w-5 h-5" />}
+            <SendIcon className="w-5 h-5" />
+            <span>Send Prompt</span>
         </button>
-        {isConnectionPanelOpen && (
-          <div className="pt-4 flex flex-col space-y-4">
-            <div className="flex flex-col space-y-2">
-              <label htmlFor="ws-url" className="text-sm font-medium text-gray-400">WebSocket URL</label>
-              <input
-                id="ws-url"
-                type="text"
-                value={wsUrl}
-                onChange={(e) => setWsUrl(e.target.value)}
-                placeholder="ws://localhost:9980"
-                className="bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                disabled={isConnected}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <StatusIndicator status={connectionStatus} />
-              {isConnected ? (
-                <button
-                  onClick={disconnect}
-                  className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200"
-                >
-                  <DisconnectIcon className="w-5 h-5" />
-                  <span>Disconnect</span>
-                </button>
-              ) : (
-                <button
-                  onClick={connect}
-                  disabled={connectionStatus === ConnectionStatus.CONNECTING}
-                  className="flex items-center space-x-2 bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <ConnectIcon className="w-5 h-5" />
-                  <span>Connect</span>
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+      </CollapsibleSection>
 
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold border-b border-gray-600 pb-2">Brush Settings</h3>
-        
-        <div className="space-y-2">
-           <label className="text-sm font-medium text-gray-400">Color Palette</label>
-           <div className="grid grid-cols-4 gap-2">
+      <CollapsibleSection title="Brush Settings" icon={<BrushIcon className="w-5 h-5 text-green-400"/>} isOpen={openSections.brush} onToggle={() => toggleSection('brush')}>
+        <div className="space-y-3">
+           <label className="text-sm font-medium text-slate-400">Color Palette</label>
+           <div className="grid grid-cols-5 gap-3">
                 {PREDEFINED_COLORS.map((c) => (
                     <button
                         key={c}
                         onClick={() => setColor(c)}
-                        className={`w-full h-10 rounded-md cursor-pointer transition-transform duration-150 transform hover:scale-110 ${color === c ? 'ring-2 ring-cyan-400 ring-offset-2 ring-offset-gray-800' : ''}`}
+                        className={`w-full aspect-square rounded-full cursor-pointer transition-transform duration-150 transform hover:scale-110 shadow-lg ${color === c ? 'ring-2 ring-purple-400 ring-offset-2 ring-offset-slate-800' : ''}`}
                         style={{ backgroundColor: c }}
                         aria-label={`Color ${c}`}
                     />
                 ))}
-                <input
-                    id="color-picker"
-                    type="color"
-                    value={color}
-                    onChange={(e) => setColor(e.target.value)}
-                    className="w-full h-10 p-1 bg-gray-700 border-0 rounded-md cursor-pointer"
-                    aria-label="Custom color picker"
-                />
+                <div className="relative w-full aspect-square">
+                    <input
+                        id="color-picker"
+                        type="color"
+                        value={color}
+                        onChange={(e) => setColor(e.target.value)}
+                        className="w-full h-full p-0 bg-transparent border-0 rounded-full cursor-pointer appearance-none [&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border-0"
+                        aria-label="Custom color picker"
+                    />
+                </div>
            </div>
         </div>
 
-        <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-400">Brush Size</label>
-            <div className="flex justify-between items-center space-x-2">
+        <div className="space-y-3">
+            <label className="text-sm font-medium text-slate-400">Brush Size</label>
+            <div className="grid grid-cols-4 gap-2">
                 {PREDEFINED_BRUSH_SIZES.map(size => (
                     <button
                         key={size}
                         onClick={() => setBrushSize(size)}
-                        className={`w-12 h-12 flex items-center justify-center rounded-full transition-colors duration-200 ${brushSize === size ? 'bg-cyan-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+                        className={`w-full aspect-square flex items-center justify-center rounded-full transition-colors duration-200 ${brushSize === size ? 'bg-purple-600 text-white' : 'bg-slate-700 hover:bg-slate-600 text-slate-300'}`}
                         aria-label={`Set brush size to ${size}px`}
                     >
                         <span className="text-sm font-bold">{size}</span>
@@ -159,7 +201,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         </div>
         
         <div className="flex flex-col space-y-2">
-          <label htmlFor="brush-size" className="text-sm font-medium text-gray-400">Custom Size: {brushSize}px</label>
+          <label htmlFor="brush-size" className="text-sm font-medium text-slate-400">Custom Size: {brushSize}px</label>
           <input
             id="brush-size"
             type="range"
@@ -167,18 +209,16 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             max="100"
             value={brushSize}
             onChange={(e) => setBrushSize(Number(e.target.value))}
-            className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
           />
         </div>
-      </div>
+      </CollapsibleSection>
       
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold border-b border-gray-600 pb-2">Actions</h3>
-        <div className="flex space-x-2">
+      <CollapsibleSection title="Canvas Actions" icon={<ActionsIcon className="w-5 h-5 text-amber-400" />} isOpen={openSections.actions} onToggle={() => toggleSection('actions')}>
+        <div className="grid grid-cols-2 gap-2">
           <button
             onClick={undo}
             disabled={!canUndo}
-            className="w-full flex items-center justify-center space-x-2 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center space-x-2 bg-slate-600/50 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             aria-label="Undo last action"
           >
             <UndoIcon className="w-5 h-5" />
@@ -187,7 +227,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           <button
             onClick={redo}
             disabled={!canRedo}
-            className="w-full flex items-center justify-center space-x-2 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center space-x-2 bg-slate-600/50 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             aria-label="Redo last action"
           >
             <RedoIcon className="w-5 h-5" />
@@ -196,12 +236,12 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         </div>
         <button
           onClick={clearCanvas}
-          className="w-full flex items-center justify-center space-x-2 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200"
+          className="w-full flex items-center justify-center space-x-2 bg-slate-600/50 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200"
         >
           <ClearIcon className="w-5 h-5" />
           <span>Clear Canvas</span>
         </button>
-      </div>
+      </CollapsibleSection>
     </div>
   );
 };

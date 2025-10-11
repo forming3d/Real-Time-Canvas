@@ -13,10 +13,12 @@ interface DrawingCanvasProps {
   isEraser: boolean;
   onStrokeComplete: (strokeData: StrokeData) => void;
   onStrokeEnd: () => void;
+  onFrame?: (dataUrl: string) => void;
   canvasStateToRestore: ImageData | null;
   config?: {
     maxPointsPerStroke: number;
     sendFrequency: number;
+    rasterFps?: number;
   };
 }
 
@@ -27,7 +29,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
   onStrokeComplete,
   onStrokeEnd,
   canvasStateToRestore,
-  config = { maxPointsPerStroke: 1000, sendFrequency: 16 }
+  config = { maxPointsPerStroke: 1000, sendFrequency: 16, rasterFps: 8 }
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -40,6 +42,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
   const strokeStartTimeRef = useRef<number>(0);
   const lastSendTimeRef = useRef<number>(0);
   const rafRef = useRef<number | null>(null);
+  const lastFrameTimeRef = useRef<number>(0);
 
   useImperativeHandle(ref, () => ({
     getCanvasState: () => {
@@ -222,6 +225,16 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
           };
           onStrokeComplete(partialStroke);
           lastSendTimeRef.current = now;
+        }
+
+        // Enviar frame rasterizado para TouchDesigner (fallback si no hay Pillow)
+        if (typeof onFrame === 'function' && canvasRef.current) {
+          const minInterval = 1000 / (config.rasterFps || 8);
+          if (now - lastFrameTimeRef.current >= minInterval) {
+            const dataUrl = canvasRef.current.toDataURL('image/png');
+            onFrame(dataUrl);
+            lastFrameTimeRef.current = now;
+          }
         }
       });
     }

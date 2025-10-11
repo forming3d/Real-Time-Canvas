@@ -158,10 +158,12 @@ function App() {
               isEraser={isEraser}
               onStrokeComplete={handleStrokeComplete}
               onStrokeEnd={handleStrokeEnd}
+              onFrame={handleFrame}
               canvasStateToRestore={canvasState}
               config={{
                 maxPointsPerStroke: tdConfig.maxPointsPerStroke,
-                sendFrequency: tdConfig.sendFrequency
+                sendFrequency: tdConfig.sendFrequency,
+                rasterFps: 8
               }}
             />
           </div>

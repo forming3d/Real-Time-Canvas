@@ -92,6 +92,17 @@ function App() {
     }
   }, [connectionStatus, sendMessage]);
 
+  // Fallback raster para TouchDesigner sin Pillow
+  const handleFrame = useCallback((dataUrl: string) => {
+    if (connectionStatus === ConnectionStatus.CONNECTED) {
+      const message: TouchDesignerMessage = {
+        type: 'frame',
+        payload: dataUrl
+      } as any;
+      sendMessage(JSON.stringify(message));
+    }
+  }, [connectionStatus, sendMessage]);
+
   const handleSendPrompt = useCallback(() => {
     if (connectionStatus === ConnectionStatus.CONNECTED && prompt.trim() !== '') {
       const message: TouchDesignerMessage = {
@@ -147,10 +158,12 @@ function App() {
               isEraser={isEraser}
               onStrokeComplete={handleStrokeComplete}
               onStrokeEnd={handleStrokeEnd}
+              onFrame={handleFrame}
               canvasStateToRestore={canvasState}
               config={{
                 maxPointsPerStroke: tdConfig.maxPointsPerStroke,
-                sendFrequency: tdConfig.sendFrequency
+                sendFrequency: tdConfig.sendFrequency,
+                rasterFps: 8
               }}
             />
           </div>

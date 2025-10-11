@@ -12,10 +12,10 @@ function App() {
   const [brushSize, setBrushSize] = useState<number>(10);
   const [isEraser, setIsEraser] = useState<boolean>(false);
   const [prompt, setPrompt] = useState<string>('');
-  
+
   // Configuración de conexión: valor fijo (el que te funcionaba antes)
   const [wsUrl, setWsUrl] = useState<string>('wss://real-time-canvas-ok.onrender.com/ws');
-  
+
   // Configuración optimizada para TouchDesigner
   const [tdConfig] = useState<TouchDesignerConfig>({
     sendMode: 'vector',
@@ -25,23 +25,21 @@ function App() {
     enableReconnection: true,
     maxReconnectAttempts: 5
   });
-  
+
   const { connectionStatus, connect, disconnect, sendMessage, resetReconnection, reconnectAttempts } = useWebSocket(wsUrl, {
     autoReconnect: tdConfig.enableReconnection,
     maxReconnectAttempts: tdConfig.maxReconnectAttempts,
     reconnectInterval: 1000
   });
 
-  // Conexión manual desde el panel (revertido al comportamiento anterior)
-  
   const drawingCanvasRef = useRef<DrawingCanvasRef>(null);
-  const { 
-    state: canvasState, 
-    setState: setCanvasState, 
-    undo, 
-    redo, 
-    canUndo, 
-    canRedo 
+  const {
+    state: canvasState,
+    setState: setCanvasState,
+    undo,
+    redo,
+    canUndo,
+    canRedo
   } = useHistory<ImageData | null>(null);
 
   const handleCanvasAction = useCallback((action: 'clear' | 'undo' | 'redo') => {
@@ -60,11 +58,11 @@ function App() {
   const handleClearCanvas = useCallback(() => {
     const canvas = drawingCanvasRef.current;
     if (canvas) {
-        const currentState = canvas.getCanvasState();
-        if (currentState) {
-            const blankImageData = new ImageData(currentState.width, currentState.height);
-            setCanvasState(blankImageData);
-        }
+      const currentState = canvas.getCanvasState();
+      if (currentState) {
+        const blankImageData = new ImageData(currentState.width, currentState.height);
+        setCanvasState(blankImageData);
+      }
     }
     handleCanvasAction('clear');
   }, [setCanvasState, handleCanvasAction]);
@@ -91,28 +89,31 @@ function App() {
         }
       };
       sendMessage(JSON.stringify(message));
+      console.log('[STROKE SENT]', strokeData.points.length, 'points');
     }
   }, [connectionStatus, sendMessage]);
 
   // Fallback raster para TouchDesigner sin Pillow (usa 'draw' por compatibilidad)
   const handleFrame = useCallback((dataUrl: string) => {
     if (connectionStatus === ConnectionStatus.CONNECTED) {
-      const message = {
+      const message: TouchDesignerMessage = {
         type: 'draw',
         payload: dataUrl
       };
       sendMessage(JSON.stringify(message));
+      console.log('[DRAW SENT] PNG frame');
     }
   }, [connectionStatus, sendMessage]);
 
   const handleSendPrompt = useCallback(() => {
     if (connectionStatus === ConnectionStatus.CONNECTED && prompt.trim() !== '') {
       // Enviar payload como string simple para máxima compatibilidad con TD
-      const message = {
+      const message: TouchDesignerMessage = {
         type: 'prompt',
         payload: prompt.trim()
       };
       sendMessage(JSON.stringify(message));
+      console.log('[PROMPT SENT]', prompt.trim());
     }
   }, [connectionStatus, sendMessage, prompt]);
 
@@ -148,7 +149,7 @@ function App() {
         </aside>
 
         {/* Área de dibujo - Protagonista */}
-        <main className="relative min-h-0"> 
+        <main className="relative min-h-0">
           {/* min-h-0 para que el hijo flex pueda contraerse correctamente */}
           <div className="absolute inset-0">
             <DrawingCanvas

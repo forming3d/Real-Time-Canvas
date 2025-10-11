@@ -1,4 +1,3 @@
-
 export enum ConnectionStatus {
   DISCONNECTED = 'DISCONNECTED',
   CONNECTING = 'CONNECTING',
@@ -19,15 +18,8 @@ export interface StrokeData {
 }
 
 export interface TouchDesignerMessage {
-  type: 'stroke' | 'prompt' | 'canvas' | 'welcome';
-  payload: {
-    points?: Point[];
-    color?: string;
-    brushSize?: number;
-    prompt?: string;
-    action?: 'clear' | 'undo' | 'redo';
-    timestamp: number;
-  };
+  type: 'stroke' | 'prompt' | 'canvas' | 'welcome' | 'draw';
+  payload: any; // Puede ser string (draw/prompt), objeto (stroke/canvas), etc.
 }
 
 export interface TouchDesignerConfig {

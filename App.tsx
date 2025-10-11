@@ -13,8 +13,11 @@ function App() {
   const [isEraser, setIsEraser] = useState<boolean>(false);
   const [prompt, setPrompt] = useState<string>('');
   
-  // Configuración de conexión (auto-detecta ws/wss y host actual)
-  const defaultWs = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+  // Configuración de conexión (prioriza env; maneja dev 5173; si no, autodetección)
+  const defaultWs = (import.meta as any).env?.VITE_WS_URL
+    || (location.port === '5173'
+        ? 'ws://localhost:3000/ws'
+        : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
   const [wsUrl, setWsUrl] = useState<string>(defaultWs);
   
   // Configuración optimizada para TouchDesigner

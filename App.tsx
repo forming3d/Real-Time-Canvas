@@ -92,25 +92,23 @@ function App() {
     }
   }, [connectionStatus, sendMessage]);
 
-  // Fallback raster para TouchDesigner sin Pillow
+  // Fallback raster para TouchDesigner sin Pillow (usa 'draw' por compatibilidad)
   const handleFrame = useCallback((dataUrl: string) => {
     if (connectionStatus === ConnectionStatus.CONNECTED) {
-      const message: TouchDesignerMessage = {
-        type: 'frame',
+      const message = {
+        type: 'draw',
         payload: dataUrl
-      } as any;
+      };
       sendMessage(JSON.stringify(message));
     }
   }, [connectionStatus, sendMessage]);
 
   const handleSendPrompt = useCallback(() => {
     if (connectionStatus === ConnectionStatus.CONNECTED && prompt.trim() !== '') {
-      const message: TouchDesignerMessage = {
+      // Enviar payload como string simple para máxima compatibilidad con TD
+      const message = {
         type: 'prompt',
-        payload: {
-          prompt: prompt.trim(),
-          timestamp: Date.now()
-        }
+        payload: prompt.trim()
       };
       sendMessage(JSON.stringify(message));
     }

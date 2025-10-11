@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { DrawingCanvas, DrawingCanvasRef } from './components/DrawingCanvas';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -13,12 +13,8 @@ function App() {
   const [isEraser, setIsEraser] = useState<boolean>(false);
   const [prompt, setPrompt] = useState<string>('');
   
-  // Configuración de conexión (prioriza env; maneja dev 5173; si no, autodetección)
-  const defaultWs = (import.meta as any).env?.VITE_WS_URL
-    || (location.port === '5173'
-        ? 'ws://localhost:3000/ws'
-        : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
-  const [wsUrl, setWsUrl] = useState<string>(defaultWs);
+  // Configuración de conexión: valor fijo (el que te funcionaba antes)
+  const [wsUrl, setWsUrl] = useState<string>('wss://real-time-canvas-ok.onrender.com/ws');
   
   // Configuración optimizada para TouchDesigner
   const [tdConfig] = useState<TouchDesignerConfig>({
@@ -36,10 +32,7 @@ function App() {
     reconnectInterval: 1000
   });
 
-  // Autoconectar al montar o al cambiar la URL
-  useEffect(() => {
-    connect();
-  }, [connect, wsUrl]);
+  // Conexión manual desde el panel (revertido al comportamiento anterior)
   
   const drawingCanvasRef = useRef<DrawingCanvasRef>(null);
   const { 
@@ -165,12 +158,10 @@ function App() {
               isEraser={isEraser}
               onStrokeComplete={handleStrokeComplete}
               onStrokeEnd={handleStrokeEnd}
-              onFrame={handleFrame}
               canvasStateToRestore={canvasState}
               config={{
                 maxPointsPerStroke: tdConfig.maxPointsPerStroke,
-                sendFrequency: tdConfig.sendFrequency,
-                rasterFps: 8
+                sendFrequency: tdConfig.sendFrequency
               }}
             />
           </div>

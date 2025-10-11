@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useRef } from 'react';
+import * as React from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { DrawingCanvas, DrawingCanvasRef } from './components/DrawingCanvas';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -40,6 +41,19 @@ function App() {
     canUndo, 
     canRedo 
   } = useHistory<ImageData | null>(null);
+
+  const handleCanvasAction = useCallback((action: 'clear' | 'undo' | 'redo') => {
+    if (connectionStatus === ConnectionStatus.CONNECTED) {
+      const message: TouchDesignerMessage = {
+        type: 'canvas',
+        payload: {
+          action,
+          timestamp: Date.now()
+        }
+      };
+      sendMessage(JSON.stringify(message));
+    }
+  }, [connectionStatus, sendMessage]);
 
   const handleClearCanvas = useCallback(() => {
     const canvas = drawingCanvasRef.current;
@@ -90,19 +104,6 @@ function App() {
       sendMessage(JSON.stringify(message));
     }
   }, [connectionStatus, sendMessage, prompt]);
-
-  const handleCanvasAction = useCallback((action: 'clear' | 'undo' | 'redo') => {
-    if (connectionStatus === ConnectionStatus.CONNECTED) {
-      const message: TouchDesignerMessage = {
-        type: 'canvas',
-        payload: {
-          action,
-          timestamp: Date.now()
-        }
-      };
-      sendMessage(JSON.stringify(message));
-    }
-  }, [connectionStatus, sendMessage]);
 
   return (
     <div className="h-dvh w-dvw bg-slate-900 text-slate-100 overflow-hidden">

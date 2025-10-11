@@ -18,7 +18,8 @@ export const useWebSocket = (url: string, options: UseWebSocketOptions = {}) => 
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(ConnectionStatus.DISCONNECTED);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Use number for browser setTimeout id to avoid NodeJS typing requirement
+  const reconnectTimeoutRef = useRef<number | null>(null);
   const isManualDisconnectRef = useRef(false);
 
   const connect = useCallback(() => {
@@ -47,7 +48,7 @@ export const useWebSocket = (url: string, options: UseWebSocketOptions = {}) => 
           reconnectAttemptsRef.current++;
           console.log(`Attempting to reconnect (${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`);
           
-          reconnectTimeoutRef.current = setTimeout(() => {
+          reconnectTimeoutRef.current = window.setTimeout(() => {
             connect();
           }, reconnectInterval * reconnectAttemptsRef.current);
           
@@ -75,7 +76,7 @@ export const useWebSocket = (url: string, options: UseWebSocketOptions = {}) => 
     isManualDisconnectRef.current = true;
     
     if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
+      window.clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
     
@@ -103,7 +104,7 @@ export const useWebSocket = (url: string, options: UseWebSocketOptions = {}) => 
   const resetReconnection = useCallback(() => {
     reconnectAttemptsRef.current = 0;
     if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
+      window.clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
   }, []);

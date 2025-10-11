@@ -38,7 +38,7 @@ const StatusIndicator: React.FC<{ status: ConnectionStatus }> = ({ status }) => 
 
   return (
     <div className="flex items-center space-x-2">
-      <div className={`w-3 h-3 rounded-full ${color} animate-pulse`}></div>
+      <div className={"w-3 h-3 rounded-full " + color + " animate-pulse"}></div>
       <span className="text-sm text-slate-400">{text}</span>
     </div>
   );
@@ -174,6 +174,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 )}
             </div>
         </div>
+          {/* Cierre del contenedor space-y-4 */}
       </CollapsibleSection>
 
       <CollapsibleSection title="AI Prompt" icon={<PromptIcon className="w-5 h-5 text-fuchsia-400"/>} isOpen={openSections.prompt} onToggle={() => toggleSection('prompt')}>
@@ -278,6 +279,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 />
               </div>
            </div>
+        </div>
       </CollapsibleSection>
       
       <CollapsibleSection title="Canvas Actions" icon={<ActionsIcon className="w-5 h-5 text-amber-400" />} isOpen={openSections.actions} onToggle={() => toggleSection('actions')}>

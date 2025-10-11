@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { DrawingCanvas, DrawingCanvasRef } from './components/DrawingCanvas';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -13,8 +13,9 @@ function App() {
   const [isEraser, setIsEraser] = useState<boolean>(false);
   const [prompt, setPrompt] = useState<string>('');
   
-  // Configuración de conexión
-  const [wsUrl, setWsUrl] = useState<string>('wss://real-time-canvas-ok.onrender.com/ws');
+  // Configuración de conexión (auto-detecta ws/wss y host actual)
+  const defaultWs = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+  const [wsUrl, setWsUrl] = useState<string>(defaultWs);
   
   // Configuración optimizada para TouchDesigner
   const [tdConfig] = useState<TouchDesignerConfig>({
@@ -31,6 +32,11 @@ function App() {
     maxReconnectAttempts: tdConfig.maxReconnectAttempts,
     reconnectInterval: 1000
   });
+
+  // Autoconectar al montar o al cambiar la URL
+  useEffect(() => {
+    connect();
+  }, [connect, wsUrl]);
   
   const drawingCanvasRef = useRef<DrawingCanvasRef>(null);
   const { 

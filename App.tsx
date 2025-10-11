@@ -3,15 +3,33 @@ import { ControlPanel } from './components/ControlPanel';
 import { DrawingCanvas, DrawingCanvasRef } from './components/DrawingCanvas';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useHistory } from './hooks/useHistory';
-import { ConnectionStatus } from './types';
+import { ConnectionStatus, StrokeData, TouchDesignerMessage, TouchDesignerConfig, Point } from './types';
 
 function App() {
+  // Estados del canvas
   const [color, setColor] = useState<string>('#FFFFFF');
   const [brushSize, setBrushSize] = useState<number>(10);
-  const [wsUrl, setWsUrl] = useState<string>('wss://real-time-canvas-ok.onrender.com/ws');
+  const [isEraser, setIsEraser] = useState<boolean>(false);
   const [prompt, setPrompt] = useState<string>('');
   
-  const { connectionStatus, connect, disconnect, sendMessage } = useWebSocket(wsUrl);
+  // Configuración de conexión
+  const [wsUrl, setWsUrl] = useState<string>('wss://real-time-canvas-ok.onrender.com/ws');
+  
+  // Configuración optimizada para TouchDesigner
+  const [tdConfig] = useState<TouchDesignerConfig>({
+    sendMode: 'vector',
+    compressionLevel: 0.8,
+    maxPointsPerStroke: 500,
+    sendFrequency: 16, // ~60fps
+    enableReconnection: true,
+    maxReconnectAttempts: 5
+  });
+  
+  const { connectionStatus, connect, disconnect, sendMessage, resetReconnection, reconnectAttempts } = useWebSocket(wsUrl, {
+    autoReconnect: tdConfig.enableReconnection,
+    maxReconnectAttempts: tdConfig.maxReconnectAttempts,
+    reconnectInterval: 1000
+  });
   
   const drawingCanvasRef = useRef<DrawingCanvasRef>(null);
   const { 
@@ -32,7 +50,8 @@ function App() {
             setCanvasState(blankImageData);
         }
     }
-  }, [setCanvasState]);
+    handleCanvasAction('clear');
+  }, [setCanvasState, handleCanvasAction]);
 
   const handleStrokeEnd = useCallback(() => {
     const canvas = drawingCanvasRef.current;
@@ -44,56 +63,98 @@ function App() {
     }
   }, [setCanvasState]);
 
-  const handleDraw = useCallback((dataUrl: string) => {
+  const handleStrokeComplete = useCallback((strokeData: StrokeData) => {
     if (connectionStatus === ConnectionStatus.CONNECTED) {
-      const message = { type: 'draw', payload: dataUrl };
+      const message: TouchDesignerMessage = {
+        type: 'stroke',
+        payload: {
+          points: strokeData.points,
+          color: strokeData.color,
+          brushSize: strokeData.brushSize,
+          timestamp: strokeData.timestamp
+        }
+      };
       sendMessage(JSON.stringify(message));
     }
   }, [connectionStatus, sendMessage]);
 
   const handleSendPrompt = useCallback(() => {
     if (connectionStatus === ConnectionStatus.CONNECTED && prompt.trim() !== '') {
-      const message = { type: 'prompt', payload: prompt };
+      const message: TouchDesignerMessage = {
+        type: 'prompt',
+        payload: {
+          prompt: prompt.trim(),
+          timestamp: Date.now()
+        }
+      };
       sendMessage(JSON.stringify(message));
     }
   }, [connectionStatus, sendMessage, prompt]);
 
+  const handleCanvasAction = useCallback((action: 'clear' | 'undo' | 'redo') => {
+    if (connectionStatus === ConnectionStatus.CONNECTED) {
+      const message: TouchDesignerMessage = {
+        type: 'canvas',
+        payload: {
+          action,
+          timestamp: Date.now()
+        }
+      };
+      sendMessage(JSON.stringify(message));
+    }
+  }, [connectionStatus, sendMessage]);
+
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col md:flex-row items-stretch p-4 gap-4 font-sans">
-      <div className="flex-shrink-0 w-full md:w-80">
-         <ControlPanel
+    <div className="h-dvh w-dvw bg-slate-900 text-slate-100 overflow-hidden">
+      {/* Mobile/Tablet: panel arriba (sticky). md+: panel a la izquierda (sticky) */}
+      <div className="grid h-full grid-rows-[auto_1fr] md:grid-rows-1 md:grid-cols-[320px_minmax(0,1fr)]">
+        {/* Panel de Control - Siempre visible */}
+        <aside className="z-10 sticky top-0 md:static md:h-dvh overflow-y-auto border-b md:border-b-0 md:border-r border-slate-800 bg-slate-900 p-4">
+          <ControlPanel
             color={color}
             setColor={setColor}
             brushSize={brushSize}
             setBrushSize={setBrushSize}
+            isEraser={isEraser}
+            setIsEraser={setIsEraser}
             clearCanvas={handleClearCanvas}
             wsUrl={wsUrl}
             setWsUrl={setWsUrl}
             connectionStatus={connectionStatus}
             connect={connect}
             disconnect={disconnect}
-            undo={undo}
-            redo={redo}
+            reconnectAttempts={reconnectAttempts}
+            resetReconnection={resetReconnection}
+            undo={() => { undo(); handleCanvasAction('undo'); }}
+            redo={() => { redo(); handleCanvasAction('redo'); }}
             canUndo={canUndo}
             canRedo={canRedo}
             prompt={prompt}
             setPrompt={setPrompt}
             sendPrompt={handleSendPrompt}
           />
-      </div>
+        </aside>
 
-      <main className="flex-grow flex flex-col">
-        <div className="flex-grow w-full h-full min-h-[300px] md:min-h-0">
-          <DrawingCanvas
-            ref={drawingCanvasRef}
-            color={color}
-            brushSize={brushSize}
-            onDraw={handleDraw}
-            onStrokeEnd={handleStrokeEnd}
-            canvasStateToRestore={canvasState}
-          />
-        </div>
-      </main>
+        {/* Área de dibujo - Protagonista */}
+        <main className="relative min-h-0"> 
+          {/* min-h-0 para que el hijo flex pueda contraerse correctamente */}
+          <div className="absolute inset-0">
+            <DrawingCanvas
+              ref={drawingCanvasRef}
+              color={color}
+              brushSize={brushSize}
+              isEraser={isEraser}
+              onStrokeComplete={handleStrokeComplete}
+              onStrokeEnd={handleStrokeEnd}
+              canvasStateToRestore={canvasState}
+              config={{
+                maxPointsPerStroke: tdConfig.maxPointsPerStroke,
+                sendFrequency: tdConfig.sendFrequency
+              }}
+            />
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

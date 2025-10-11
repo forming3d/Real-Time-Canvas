@@ -1,29 +1,45 @@
-import React, { useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
+import { Point, StrokeData } from '../types';
 
 export interface DrawingCanvasRef {
   getCanvasState: () => ImageData | null;
+  getCurrentStroke: () => StrokeData | null;
+  clearCanvas: () => void;
 }
 
 interface DrawingCanvasProps {
   color: string;
   brushSize: number;
-  onDraw: (dataUrl: string) => void;
+  isEraser: boolean;
+  onStrokeComplete: (strokeData: StrokeData) => void;
   onStrokeEnd: () => void;
   canvasStateToRestore: ImageData | null;
+  config?: {
+    maxPointsPerStroke: number;
+    sendFrequency: number;
+  };
 }
 
 export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
   color,
   brushSize,
-  onDraw,
+  isEraser,
+  onStrokeComplete,
   onStrokeEnd,
-  canvasStateToRestore
+  canvasStateToRestore,
+  config = { maxPointsPerStroke: 1000, sendFrequency: 16 }
 }, ref) => {
+  const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const contextRef = useRef<CanvasRenderingContext2D | null>(null);
+  
+  // Estados de dibujo
   const isDrawingRef = useRef(false);
-  const lastPositionRef = useRef<{ x: number; y: number } | null>(null);
-  const animationFrameIdRef = useRef<number | null>(null);
+  const lastPositionRef = useRef<Point | null>(null);
+  const currentStrokeRef = useRef<Point[]>([]);
+  const strokeStartTimeRef = useRef<number>(0);
+  const lastSendTimeRef = useRef<number>(0);
+  const rafRef = useRef<number | null>(null);
 
   useImperativeHandle(ref, () => ({
     getCanvasState: () => {
@@ -33,100 +49,150 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
         return context.getImageData(0, 0, canvas.width, canvas.height);
       }
       return null;
-    }
-  }));
-
-  useEffect(() => {
-    const context = contextRef.current;
-    const canvas = canvasRef.current;
-    if (context && canvas) {
-      if (canvasStateToRestore) {
-        context.putImageData(canvasStateToRestore, 0, 0);
-      } else {
+    },
+    getCurrentStroke: () => {
+      if (currentStrokeRef.current.length > 0) {
+        return {
+          points: [...currentStrokeRef.current],
+          color,
+          brushSize,
+          timestamp: strokeStartTimeRef.current
+        };
+      }
+      return null;
+    },
+    clearCanvas: () => {
+      const canvas = canvasRef.current;
+      const context = contextRef.current;
+      if (canvas && context) {
         context.clearRect(0, 0, canvas.width, canvas.height);
       }
     }
-  }, [canvasStateToRestore]);
+  }));
 
-  const resizeCanvas = useCallback(() => {
+  // ResizeObserver + HiDPI optimization
+  const resizeToContainer = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const context = contextRef.current;
-    if (!context) return;
+    const ctx = contextRef.current;
+    const container = containerRef.current;
+    if (!canvas || !ctx || !container) return;
 
-    const { width, height } = canvas.getBoundingClientRect();
-    if (canvas.width !== width || canvas.height !== height) {
-      const tempCanvas = document.createElement('canvas');
-      const tempCtx = tempCanvas.getContext('2d');
-      tempCanvas.width = canvas.width;
-      tempCanvas.height = canvas.height;
-      if (tempCtx) tempCtx.drawImage(canvas, 0, 0);
+    const rect = container.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.max(1, Math.floor(rect.width * dpr));
+    const h = Math.max(1, Math.floor(rect.height * dpr));
+    
+    if (canvas.width !== w || canvas.height !== h) {
+      // Preservar contenido anterior
+      const prevCanvas = document.createElement("canvas");
+      prevCanvas.width = canvas.width;
+      prevCanvas.height = canvas.height;
+      if (canvas.width && canvas.height) {
+        const prevCtx = prevCanvas.getContext("2d")!;
+        prevCtx.drawImage(canvas, 0, 0);
+      }
 
-      canvas.width = width;
-      canvas.height = height;
-      
-      context.strokeStyle = color;
-      context.lineWidth = brushSize;
-      context.lineCap = 'round';
-      context.lineJoin = 'round';
-      
-      if (tempCtx) context.drawImage(tempCanvas, 0, 0);
+      // Actualizar dimensiones del canvas
+      canvas.width = w;
+      canvas.height = h;
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+
+      // Configurar contexto con DPR
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = isEraser ? "rgba(0,0,0,1)" : color;
+      ctx.lineWidth = brushSize;
+      ctx.globalCompositeOperation = isEraser ? "destination-out" : "source-over";
+
+      // Restaurar contenido anterior
+      if (prevCanvas.width && prevCanvas.height) {
+        ctx.drawImage(prevCanvas, 0, 0, prevCanvas.width, prevCanvas.height, 0, 0, w, h);
+      }
     }
-  }, [brushSize, color]);
+  }, [color, brushSize, isEraser]);
 
-  useEffect(() => {
+  // Inicializar canvas y ResizeObserver
+  useLayoutEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const context = canvas.getContext('2d');
-    if (!context) return;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
     
-    context.lineCap = 'round';
-    context.lineJoin = 'round';
-    contextRef.current = context;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
     
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
+    contextRef.current = ctx;
+    resizeToContainer();
+    
+    // ResizeObserver para cambios de tamaño
+    const resizeObserver = new ResizeObserver(resizeToContainer);
+    resizeObserver.observe(container);
     
     return () => {
-      window.removeEventListener('resize', resizeCanvas);
-      if (animationFrameIdRef.current) {
-        cancelAnimationFrame(animationFrameIdRef.current);
+      resizeObserver.disconnect();
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
       }
     };
-  }, [resizeCanvas]);
+  }, [resizeToContainer]);
 
+  // Actualizar propiedades del contexto cuando cambien
   useEffect(() => {
-    if (contextRef.current) {
-      contextRef.current.strokeStyle = color;
-      contextRef.current.lineWidth = brushSize;
-    }
-  }, [color, brushSize]);
+    const ctx = contextRef.current;
+    if (!ctx) return;
+    
+    ctx.strokeStyle = isEraser ? "rgba(0,0,0,1)" : color;
+    ctx.lineWidth = brushSize;
+    ctx.globalCompositeOperation = isEraser ? "destination-out" : "source-over";
+  }, [color, brushSize, isEraser]);
 
-  const getEventPosition = useCallback((e: MouseEvent | TouchEvent) => {
+  // Restaurar estado del canvas
+  useEffect(() => {
+    const context = contextRef.current;
+    const canvas = canvasRef.current;
+    if (context && canvas && canvasStateToRestore) {
+      context.putImageData(canvasStateToRestore, 0, 0);
+    }
+  }, [canvasStateToRestore]);
+
+  // Obtener posición del pointer event (unificado para mouse/touch/pen)
+  const getPointerPosition = useCallback((e: PointerEvent | React.PointerEvent) => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
-    const touch = e instanceof TouchEvent ? e.touches[0] : null;
-    const mouse = e instanceof MouseEvent ? e : null;
-    
-    const clientX = touch ? touch.clientX : (mouse ? mouse.clientX : 0);
-    const clientY = touch ? touch.clientY : (mouse ? mouse.clientY : 0);
-
-    return { x: clientX - rect.left, y: clientY - rect.top };
+    return { 
+      x: e.clientX - rect.left, 
+      y: e.clientY - rect.top 
+    };
   }, []);
 
-  const startDrawing = useCallback((e: MouseEvent | TouchEvent) => {
-    const pos = getEventPosition(e);
+  // Iniciar dibujo
+  const startDrawing = useCallback((e: React.PointerEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    // Capturar el pointer para eventos posteriores
+    canvas.setPointerCapture(e.pointerId);
+    
+    const pos = getPointerPosition(e);
     if (!pos) return;
+    
     isDrawingRef.current = true;
     lastPositionRef.current = pos;
-  }, [getEventPosition]);
+    currentStrokeRef.current = [pos];
+    strokeStartTimeRef.current = Date.now();
+    lastSendTimeRef.current = Date.now();
+  }, [getPointerPosition]);
 
-  const draw = useCallback((e: MouseEvent | TouchEvent) => {
+  // Dibujar con throttling inteligente
+  const draw = useCallback((e: React.PointerEvent) => {
     if (!isDrawingRef.current) return;
     e.preventDefault();
-    const pos = getEventPosition(e);
+    
+    const pos = getPointerPosition(e);
     if (!pos || !lastPositionRef.current) return;
+    
     const context = contextRef.current;
     if (context) {
       context.beginPath();
@@ -134,58 +200,68 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
       context.lineTo(pos.x, pos.y);
       context.stroke();
     }
-    lastPositionRef.current = pos;
-  }, [getEventPosition]);
-
-  const stopDrawing = useCallback(() => {
-    if (isDrawingRef.current) {
-      isDrawingRef.current = false;
-      lastPositionRef.current = null;
-      onStrokeEnd();
-    }
-  }, [onStrokeEnd]);
-
-  const sendCanvasData = useCallback(() => {
-    if (isDrawingRef.current && canvasRef.current) {
-      const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.5);
-      onDraw(dataUrl);
-    }
-    animationFrameIdRef.current = requestAnimationFrame(sendCanvasData);
-  }, [onDraw]);
-  
-  useEffect(() => {
-    animationFrameIdRef.current = requestAnimationFrame(sendCanvasData);
-    return () => {
-      if(animationFrameIdRef.current) {
-        cancelAnimationFrame(animationFrameIdRef.current);
-      }
-    };
-  }, [sendCanvasData]);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    canvas.addEventListener('mousedown', startDrawing);
-    canvas.addEventListener('mousemove', draw);
-    document.addEventListener('mouseup', stopDrawing);
     
-    canvas.addEventListener('touchstart', startDrawing, { passive: false });
-    canvas.addEventListener('touchmove', draw, { passive: false });
-    document.addEventListener('touchend', stopDrawing);
-    return () => {
-      canvas.removeEventListener('mousedown', startDrawing);
-      canvas.removeEventListener('mousemove', draw);
-      document.removeEventListener('mouseup', stopDrawing);
-      canvas.removeEventListener('touchstart', startDrawing);
-      canvas.removeEventListener('touchmove', draw);
-      document.removeEventListener('touchend', stopDrawing);
-    };
-  }, [startDrawing, draw, stopDrawing]);
+    // Agregar punto al trazo actual
+    currentStrokeRef.current.push(pos);
+    
+    // RAF on-demand + throttling inteligente
+    const now = performance.now();
+    if (!rafRef.current) {
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        
+        // Enviar datos si ha pasado suficiente tiempo y no excede el límite
+        if (now - lastSendTimeRef.current >= config.sendFrequency && 
+            currentStrokeRef.current.length < config.maxPointsPerStroke) {
+          
+          const partialStroke: StrokeData = {
+            points: [...currentStrokeRef.current],
+            color,
+            brushSize,
+            timestamp: strokeStartTimeRef.current
+          };
+          onStrokeComplete(partialStroke);
+          lastSendTimeRef.current = now;
+        }
+      });
+    }
+    
+    lastPositionRef.current = pos;
+  }, [getPointerPosition, color, brushSize, config.sendFrequency, config.maxPointsPerStroke, onStrokeComplete]);
+
+  // Finalizar dibujo
+  const stopDrawing = useCallback(() => {
+    if (!isDrawingRef.current) return;
+    
+    isDrawingRef.current = false;
+    
+    // Enviar trazo completo si tiene puntos
+    if (currentStrokeRef.current.length > 0) {
+      const completeStroke: StrokeData = {
+        points: [...currentStrokeRef.current],
+        color,
+        brushSize,
+        timestamp: strokeStartTimeRef.current
+      };
+      onStrokeComplete(completeStroke);
+    }
+    
+    lastPositionRef.current = null;
+    currentStrokeRef.current = [];
+    onStrokeEnd();
+  }, [onStrokeEnd, color, brushSize, onStrokeComplete]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="w-full h-full bg-black/30 rounded-xl shadow-inner touch-none"
-    />
+    <div ref={containerRef} className="h-full w-full">
+      <canvas
+        ref={canvasRef}
+        className="block touch-none select-none"
+        onPointerDown={startDrawing}
+        onPointerMove={draw}
+        onPointerUp={stopDrawing}
+        onPointerCancel={stopDrawing}
+        onPointerLeave={stopDrawing}
+      />
+    </div>
   );
 });

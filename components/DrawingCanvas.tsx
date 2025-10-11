@@ -28,6 +28,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
   isEraser,
   onStrokeComplete,
   onStrokeEnd,
+  onFrame,
   canvasStateToRestore,
   config = { maxPointsPerStroke: 1000, sendFrequency: 16, rasterFps: 8 }
 }, ref) => {
@@ -240,7 +241,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
     }
     
     lastPositionRef.current = pos;
-  }, [getPointerPosition, color, brushSize, config.sendFrequency, config.maxPointsPerStroke, onStrokeComplete]);
+  }, [getPointerPosition, color, brushSize, config.sendFrequency, config.maxPointsPerStroke, config.rasterFps, onStrokeComplete, onFrame]);
 
   // Finalizar dibujo
   const stopDrawing = useCallback(() => {

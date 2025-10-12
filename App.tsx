@@ -25,7 +25,7 @@ export default function App() {
   const [mode, setMode] = useState<"brush"|"eraser">("brush");
   const canvasRef = useRef<DrawingCanvasRef | null>(null);
 
-  // Conexión WS
+  // Conexión WS (sin logs en UI)
   useEffect(() => {
     let stop = false;
     let retry: number | null = null;
@@ -35,7 +35,6 @@ export default function App() {
       try {
         const ws = new WebSocket(WS_URL);
         wsRef.current = ws;
-
         ws.onopen = () => {
           setConnected(true);
           try { ws.send(JSON.stringify({ type: "welcome", payload: Date.now() })); } catch {}
@@ -45,8 +44,6 @@ export default function App() {
           setConnected(false);
           retry = window.setTimeout(connect, 1500) as unknown as number;
         };
-        ws.onerror = () => {/* opcional: console.warn('WS error') */};
-        ws.onmessage = () => {/* ocultamos logs en UI */};
       } catch {
         retry = window.setTimeout(connect, 2000) as unknown as number;
       }
@@ -61,7 +58,7 @@ export default function App() {
     };
   }, []);
 
-  // Keep-alive JSON cada 30s (evita cierres por inactividad sin usar ping/pong)
+  // Keep-alive por JSON (evita cortes sin ping/pong)
   useEffect(() => {
     const id = window.setInterval(() => {
       const ws = wsRef.current;
@@ -72,7 +69,7 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
-  // Envío imagen (PNG con alfa)
+  // Envío de imagen (PNG transparente)
   const sendDraw = useCallback((dataUrl: string) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -84,14 +81,14 @@ export default function App() {
     sendDraw(dataUrl);
   }, [sendDraw]);
 
-  // Opcional: stroke vector (TD lo ignora y no se muestra en UI)
+  // (Opcional) vector de puntos
   const handleStroke = useCallback((stroke: any) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     try { ws.send(JSON.stringify({ type: "stroke", payload: stroke })); } catch {}
   }, []);
 
-  // Prompt → TD (botón)
+  // Prompt → TD
   const sendPrompt = useCallback(() => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -100,10 +97,20 @@ export default function App() {
     try { ws.send(JSON.stringify({ type: "proc", payload: text })); } catch {}
   }, [prompt]);
 
-  // Borrar canvas (PNG vacío)
+  // Acciones de canvas
   const clearCanvas = useCallback(() => {
-    const dataUrl = canvasRef.current?.clear();
-    if (dataUrl) sendDraw(dataUrl);
+    const d = canvasRef.current?.clear();
+    if (d) sendDraw(d);
+  }, [sendDraw]);
+
+  const undo = useCallback(() => {
+    const d = canvasRef.current?.undo();
+    if (d) sendDraw(d);
+  }, [sendDraw]);
+
+  const redo = useCallback(() => {
+    const d = canvasRef.current?.redo();
+    if (d) sendDraw(d);
   }, [sendDraw]);
 
   // UI -> canvas
@@ -114,6 +121,7 @@ export default function App() {
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", minHeight: "100vh", background: "#0f172a", color: "#e2e8f0" }}>
+      {/* Panel lateral */}
       <aside style={{ borderRight: "1px solid #1e293b", padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <strong>Conexión</strong>
@@ -180,31 +188,43 @@ export default function App() {
           <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>{toolLabel}</div>
         </div>
 
-        <button
-          onClick={clearCanvas}
-          style={{ marginTop: 4, width: "100%", padding: 10, borderRadius: 8, border: "1px solid #334155", background: "#0b1220", color: "#e2e8f0", cursor: "pointer" }}
-          title="Borrar canvas (envía draw vacío a TouchDesigner)"
-        >
+        {/* Acciones */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <button onClick={undo}  style={{ padding: 10, borderRadius: 8, border: "1px solid #334155", background: "#0b1220", color: "#e2e8f0" }}>↩️ Deshacer</button>
+          <button onClick={redo}  style={{ padding: 10, borderRadius: 8, border: "1px solid #334155", background: "#0b1220", color: "#e2e8f0" }}>↪️ Rehacer</button>
+        </div>
+        <button onClick={clearCanvas} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #334155", background: "#0b1220", color: "#e2e8f0" }}>
           Borrar canvas
         </button>
       </aside>
 
-      {/* Área de dibujo */}
+      {/* Área de dibujo: el canvas rellena este wrapper */}
       <main style={{ display: "grid", placeItems: "center", padding: 12 }}>
-        <div style={{ width: "min(95vw, 1100px)", height: "min(75vh, 680px)",
-          display: "grid", placeItems: "center", border: "1px solid #1e293b", borderRadius: 12, background: "#0b1220" }}>
-          <DrawingCanvas
-            ref={canvasRef}
-            width={900}
-            height={560}
-            color={color}
-            brushSize={brushSize}
-            mode={mode}
-            rasterMax={512}
-            rasterFps={8}
-            onFrame={handleFrame}
-            onStroke={handleStroke}
-          />
+        <div
+          style={{
+            width: "min(95vw, 1100px)",
+            height: "min(75vh, 680px)",
+            border: "1px solid #1e293b",
+            borderRadius: 12,
+            background: "#0b1220",
+            overflow: "hidden",     // evita recortes visuales extraños
+            padding: 0,
+            display: "grid"
+          }}
+        >
+          {/* El canvas se estira al 100% del wrapper */}
+          <div style={{ width: "100%", height: "100%" }}>
+            <DrawingCanvas
+              ref={canvasRef}
+              color={color}
+              brushSize={brushSize}
+              mode={mode}
+              rasterMax={1024}
+              rasterFps={8}
+              onFrame={handleFrame}
+              onStroke={handleStroke}
+            />
+          </div>
         </div>
       </main>
     </div>

@@ -352,7 +352,7 @@ export default function App() {
       </aside>
 
       {/* Área de dibujo: ocupa TODO el espacio disponible */}
-      <main style={{ padding: 16 }}>
+      <main style={{ padding: 24 }}>
         <div
           style={{
             width: "100%",
@@ -362,6 +362,8 @@ export default function App() {
             background: "#0b1220",
             overflow: "hidden",
             display: "grid",
+            padding: 12,             // ← marco interior
+            boxSizing: "border-box", // ← asegura cálculo correcto
           }}
         >
           <div style={{ width: "100%", height: "100%" }}>

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-/** ========= Utiles de color ========= */
+/** ========= Utilidades de color ========= */
 type RGB = { r: number; g: number; b: number };
 type HSV = { h: number; s: number; v: number };
 
@@ -20,18 +20,15 @@ function hsvToRgb({ h, s, v }: HSV): RGB {
   const m = v - c;
   return { r: Math.round((r + m) * 255), g: Math.round((g + m) * 255), b: Math.round((b + m) * 255) };
 }
-
 function rgbToHex({ r, g, b }: RGB) {
   const toHex = (n: number) => n.toString(16).padStart(2, "0");
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
-
 function hexToRgb(hex: string): RGB {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
   if (!m) return { r: 255, g: 0, b: 0 };
   return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
 }
-
 function rgbToHsv({ r, g, b }: RGB): HSV {
   const rf = r / 255, gf = g / 255, bf = b / 255;
   const max = Math.max(rf, gf, bf), min = Math.min(rf, gf, bf);
@@ -70,150 +67,92 @@ export default function ColorPicker({
   className,
   style
 }: ColorPickerProps) {
-  // estado interno (HSV) y “historial”
   const [hsv, setHSV] = useState<HSV>(() => rgbToHsv(hexToRgb(color)));
   const [history, setHistory] = useState<string[]>(() => [color]);
+  const [imagePalette, setImagePalette] = useState<string[]>([]);
 
-  // canvases + medidas
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const wheelRef = useRef<HTMLCanvasElement | null>(null);
   const svRef = useRef<HTMLCanvasElement | null>(null);
   const dpr = Math.max(1, window.devicePixelRatio || 1);
 
-  // paleta desde imagen
-  const [imagePalette, setImagePalette] = useState<string[]>([]);
-
-  // sincroniza si viene color nuevo desde arriba
+  // sincroniza si cambia color desde arriba
   useEffect(() => {
     const cur = rgbToHsv(hexToRgb(color));
     setHSV(cur);
-    setHistory((h) => {
-      if (h[0] === color) return h;
-      const next = [color, ...h.filter(c => c !== color)];
-      return next.slice(0, 10);
-    });
+    setHistory((h) => (h[0] === color ? h : [color, ...h.filter(c => c !== color)].slice(0, 10)));
   }, [color]);
 
-  // dibuja rueda + cuadro SV
+  // dibuja rueda + cuadro SV (y redimensiona)
   useEffect(() => {
     const wrap = wrapRef.current;
     const wheel = wheelRef.current;
     const sv = svRef.current;
     if (!wrap || !wheel || !sv) return;
 
-    const rect = wrap.getBoundingClientRect();
-    const size = Math.min(rect.width, 260); // tamaño máximo compacto
-    // rueda
-    wheel.width = Math.round(size * dpr);
-    wheel.height = Math.round(size * dpr);
-    wheel.style.width = `${size}px`;
-    wheel.style.height = `${size}px`;
-    // SV
-    sv.width = Math.round(size * dpr);
-    sv.height = Math.round(size * dpr);
-    sv.style.width = `${size}px`;
-    sv.style.height = `${size}px`;
-
-    drawAll();
-
-    function drawAll() {
+    const paintAll = () => {
+      const rect = wrap.getBoundingClientRect();
+      const size = Math.min(rect.width, 260);
+      [wheel, sv].forEach((c) => {
+        c.width = Math.round(size * dpr);
+        c.height = Math.round(size * dpr);
+        c.style.width = `${size}px`;
+        c.style.height = `${size}px`;
+      });
       drawWheel(wheel, hsv.h);
       drawSV(sv, hsv);
       drawMarkers(wheel, sv, hsv);
-    }
-    // vuelve a pintar si cambia hsv
-    drawAll();
+    };
 
-    // Redibuja al resize (por si cambia ancho contenedor)
-    const ro = new ResizeObserver(() => {
-      const r2 = wrap.getBoundingClientRect();
-      const size2 = Math.min(r2.width, 260);
-      if (wheel.style.width !== `${size2}px`) {
-        wheel.width = Math.round(size2 * dpr);
-        wheel.height = Math.round(size2 * dpr);
-        wheel.style.width = `${size2}px`;
-        wheel.style.height = `${size2}px`;
-        sv.width = Math.round(size2 * dpr);
-        sv.height = Math.round(size2 * dpr);
-        sv.style.width = `${size2}px`;
-        sv.style.height = `${size2}px`;
-        drawAll();
-      }
-    });
+    paintAll();
+    const ro = new ResizeObserver(paintAll);
     ro.observe(wrap);
     return () => ro.disconnect();
-  }, [hsv.h]); // eslint-disable-line
+  }, [hsv.h, dpr]); // eslint-disable-line
 
-  // ======== interacciones ========
+  // ======== interacciones: SOLO escuchamos en wheel ========
   useEffect(() => {
     const wheel = wheelRef.current!;
     const sv = svRef.current!;
-    const listeners: Array<() => void> = [];
+    if (!wheel || !sv) return;
 
-    // helpers
-    const getCenter = (c: HTMLCanvasElement) => ({ cx: c.width / 2, cy: c.height / 2 });
-    const outerR = () => (wheel.width / 2) - PADDING * dpr;
-    const innerR = () => outerR() - RING_THICKNESS * dpr;
+    let dragging: "hue" | "sv" | null = null;
 
-    // Rueda (H)
-    let draggingH = false;
-    const onWheelDown = (ev: PointerEvent) => {
-      draggingH = true;
-      wheel.setPointerCapture(ev.pointerId);
-      updateHue(ev);
+    const geom = () => {
+      const size = wheel.width;
+      const cx = size / 2, cy = size / 2;
+      const outer = (size / 2) - PADDING * dpr;
+      const inner = outer - RING_THICKNESS * dpr;
+      const side = Math.min(inner * Math.SQRT2, outer * 2 - (RING_THICKNESS * dpr));
+      const start = (size - side) / 2;
+      return { size, cx, cy, outer, inner, side, start };
     };
-    const onWheelMove = (ev: PointerEvent) => { if (draggingH) updateHue(ev); };
-    const onWheelUp = (ev: PointerEvent) => { draggingH = false; try { wheel.releasePointerCapture(ev.pointerId); } catch {} };
 
-    const updateHue = (ev: PointerEvent) => {
+    const getXY = (ev: PointerEvent) => {
       const rect = wheel.getBoundingClientRect();
-      const x = (ev.clientX - rect.left) * dpr;
-      const y = (ev.clientY - rect.top) * dpr;
-      const { cx, cy } = getCenter(wheel);
+      return { x: (ev.clientX - rect.left) * dpr, y: (ev.clientY - rect.top) * dpr };
+    };
+
+    const updateHue = (x: number, y: number) => {
+      const { cx, cy, outer, inner } = geom();
       const dx = x - cx, dy = y - cy;
       const r = Math.sqrt(dx*dx + dy*dy);
-      if (r < innerR() || r > outerR() + RING_THICKNESS * dpr) return; // fuera del anillo
+      if (r < inner || r > outer) return false; // fuera del anillo
       let deg = Math.atan2(dy, dx) * 180 / Math.PI;
       if (deg < 0) deg += 360;
       const next = { ...hsv, h: deg };
       setHSV(next);
       onChange(rgbToHex(hsvToRgb(next)));
-      // repinta
       drawWheel(wheel, next.h);
       drawSV(sv, next);
       drawMarkers(wheel, sv, next);
+      return true;
     };
 
-    wheel.addEventListener("pointerdown", onWheelDown);
-    window.addEventListener("pointermove", onWheelMove);
-    window.addEventListener("pointerup", onWheelUp);
-    listeners.push(() => {
-      wheel.removeEventListener("pointerdown", onWheelDown);
-      window.removeEventListener("pointermove", onWheelMove);
-      window.removeEventListener("pointerup", onWheelUp);
-    });
-
-    // SV (S,V)
-    let draggingSV = false;
-    const onSvDown = (ev: PointerEvent) => {
-      draggingSV = true;
-      sv.setPointerCapture(ev.pointerId);
-      updateSV(ev);
-    };
-    const onSvMove = (ev: PointerEvent) => { if (draggingSV) updateSV(ev); };
-    const onSvUp = (ev: PointerEvent) => { draggingSV = false; try { sv.releasePointerCapture(ev.pointerId); } catch {} };
-
-    const updateSV = (ev: PointerEvent) => {
-      const rect = sv.getBoundingClientRect();
-      const x = (ev.clientX - rect.left) * dpr;
-      const y = (ev.clientY - rect.top) * dpr;
-      const size = sv.width;
-      const rOut = outerR();
-      const rIn = innerR();
-      const side = Math.min(rIn * Math.SQRT2, rOut * 2 - (RING_THICKNESS * dpr)); // cuadrado inscrito
-      const start = (size - side) / 2;
+    const updateSV = (x: number, y: number) => {
+      const { side, start } = geom();
       // dentro del cuadrado
-      if (x < start || y < start || x > start + side || y > start + side) return;
+      if (x < start || y < start || x > start + side || y > start + side) return false;
       const s = clamp01((x - start) / side);
       const v = clamp01(1 - (y - start) / side);
       const next = { ...hsv, s, v };
@@ -221,18 +160,39 @@ export default function ColorPicker({
       onChange(rgbToHex(hsvToRgb(next)));
       drawSV(sv, next);
       drawMarkers(wheel, sv, next);
+      return true;
     };
 
-    sv.addEventListener("pointerdown", onSvDown);
-    window.addEventListener("pointermove", onSvMove);
-    window.addEventListener("pointerup", onSvUp);
-    listeners.push(() => {
-      sv.removeEventListener("pointerdown", onSvDown);
-      window.removeEventListener("pointermove", onSvMove);
-      window.removeEventListener("pointerup", onSvUp);
-    });
+    const onDown = (ev: PointerEvent) => {
+      const { x, y } = getXY(ev);
+      // priorizamos SV si cae dentro del cuadro, si no, HUE
+      if (updateSV(x, y)) dragging = "sv";
+      else if (updateHue(x, y)) dragging = "hue";
+      else dragging = null;
+      if (dragging) {
+        wheel.setPointerCapture(ev.pointerId);
+        ev.preventDefault();
+      }
+    };
+    const onMove = (ev: PointerEvent) => {
+      if (!dragging) return;
+      const { x, y } = getXY(ev);
+      if (dragging === "sv") updateSV(x, y);
+      else updateHue(x, y);
+    };
+    const onUp = (ev: PointerEvent) => {
+      dragging = null;
+      try { wheel.releasePointerCapture(ev.pointerId); } catch {}
+    };
 
-    return () => listeners.forEach((fn) => fn());
+    wheel.addEventListener("pointerdown", onDown);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      wheel.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
   }, [hsv, onChange, dpr]);
 
   // ======== dibujo ========
@@ -257,10 +217,9 @@ export default function ColorPicker({
       ctx.arc(cx, cy, (outer + inner) / 2, (a - 1) * Math.PI / 180, (a + 1) * Math.PI / 180);
       ctx.stroke();
     }
-    // fondo SV se dibuja en drawSV
   }
 
-  function drawSV(canvas: HTMLCanvasElement, { h, s, v }: HSV) {
+  function drawSV(canvas: HTMLCanvasElement, { h }: HSV) {
     const ctx = canvas.getContext("2d")!;
     const { width, height } = canvas;
     const size = Math.min(width, height);
@@ -270,15 +229,14 @@ export default function ColorPicker({
     const side = Math.min(inner * Math.SQRT2, outer * 2 - (RING_THICKNESS * dpr));
     const start = (size - side) / 2;
 
-    // cuadro SV (horizontal = S, vertical = V)
-    const hueRgb = hsvToRgb({ h, s: 1, v: 1 });
-    const hueHex = rgbToHex(hueRgb);
+    // fondo SV (horizontal = S, vertical = V)
+    const hueHex = rgbToHex(hsvToRgb({ h, s: 1, v: 1 }));
+
+    ctx.clearRect(0, 0, width, height);
 
     const g1 = ctx.createLinearGradient(start, start, start + side, start);
     g1.addColorStop(0, "#ffffff");
     g1.addColorStop(1, hueHex);
-
-    ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = g1;
     ctx.fillRect(start, start, side, side);
 
@@ -288,7 +246,7 @@ export default function ColorPicker({
     ctx.fillStyle = g2;
     ctx.fillRect(start, start, side, side);
 
-    // bordes suaves
+    // borde fino
     ctx.strokeStyle = "#0f172a";
     ctx.lineWidth = 1 * dpr;
     ctx.strokeRect(start - 0.5, start - 0.5, side + 1, side + 1);
@@ -326,7 +284,6 @@ export default function ColorPicker({
     const start = (size - side) / 2;
     const sx = start + s * side;
     const sy = start + (1 - v) * side;
-
     sctx.save();
     sctx.beginPath();
     sctx.strokeStyle = "#fff";
@@ -341,7 +298,7 @@ export default function ColorPicker({
     sctx.restore();
   }
 
-  /** ====== paleta desde imagen (cuantización simple por cubos 12x12x12) ====== */
+  /** ====== paleta desde imagen (cuantización simple 12x12x12) ====== */
   const onPickImage = async (file: File) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
@@ -355,8 +312,8 @@ export default function ColorPicker({
       const bins = new Map<string, number>();
       for (let i = 0; i < data.length; i += 4) {
         const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-        if (a < 32) continue; // ignora casi transparencia
-        const R = Math.floor(r / 21), G = Math.floor(g / 21), B = Math.floor(b / 21); // 12 niveles
+        if (a < 32) continue;
+        const R = Math.floor(r / 21), G = Math.floor(g / 21), B = Math.floor(b / 21);
         const key = `${R},${G},${B}`;
         bins.set(key, (bins.get(key) || 0) + 1);
       }
@@ -379,8 +336,13 @@ export default function ColorPicker({
     <div className={className} style={style}>
       <div ref={wrapRef} style={{ display: "grid", placeItems: "center" }}>
         <div style={{ position: "relative" }}>
+          {/* Eventos SOLO en wheel; SV dibuja por encima pero no captura */}
           <canvas ref={wheelRef} aria-label="Rueda de color (tono)" />
-          <canvas ref={svRef} aria-label="Cuadro Saturación/Valor" style={{ position: "absolute", inset: 0 }} />
+          <canvas
+            ref={svRef}
+            aria-label="Cuadro Saturación/Valor"
+            style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+          />
         </div>
       </div>
 
@@ -410,10 +372,7 @@ export default function ColorPicker({
                 key={c}
                 onClick={() => onChange(c)}
                 aria-label={`Usar ${c}`}
-                style={{
-                  height: 22, borderRadius: 6, border: "1px solid #334155",
-                  background: c, cursor: "pointer"
-                }}
+                style={{ height: 22, borderRadius: 6, border: "1px solid #334155", background: c, cursor: "pointer" }}
                 title={c}
               />
             ))}
@@ -442,10 +401,7 @@ export default function ColorPicker({
                 key={c}
                 onClick={() => onChange(c)}
                 aria-label={`Usar ${c} de imagen`}
-                style={{
-                  height: 22, borderRadius: 6, border: "1px solid #334155",
-                  background: c, cursor: "pointer"
-                }}
+                style={{ height: 22, borderRadius: 6, border: "1px solid #334155", background: c, cursor: "pointer" }}
                 title={c}
               />
             ))}

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-/** ========= Utilidades de color ========= */
+/** ========= Utiles de color ========= */
 type RGB = { r: number; g: number; b: number };
 type HSV = { h: number; s: number; v: number };
 
@@ -110,7 +110,7 @@ export default function ColorPicker({
     return () => ro.disconnect();
   }, [hsv.h, dpr]); // eslint-disable-line
 
-  // ======== interacciones: SOLO escuchamos en wheel ========
+  // ======== interacciones: eventos SOLO en wheel (touch-action none) ========
   useEffect(() => {
     const wheel = wheelRef.current!;
     const sv = svRef.current!;
@@ -123,7 +123,7 @@ export default function ColorPicker({
       const cx = size / 2, cy = size / 2;
       const outer = (size / 2) - PADDING * dpr;
       const inner = outer - RING_THICKNESS * dpr;
-      const side = Math.min(inner * Math.SQRT2, outer * 2 - (RING_THICKNESS * dpr));
+      const side  = Math.min(inner * Math.SQRT2, outer * 2 - (RING_THICKNESS * dpr));
       const start = (size - side) / 2;
       return { size, cx, cy, outer, inner, side, start };
     };
@@ -151,7 +151,6 @@ export default function ColorPicker({
 
     const updateSV = (x: number, y: number) => {
       const { side, start } = geom();
-      // dentro del cuadrado
       if (x < start || y < start || x > start + side || y > start + side) return false;
       const s = clamp01((x - start) / side);
       const v = clamp01(1 - (y - start) / side);
@@ -165,33 +164,38 @@ export default function ColorPicker({
 
     const onDown = (ev: PointerEvent) => {
       const { x, y } = getXY(ev);
-      // priorizamos SV si cae dentro del cuadro, si no, HUE
       if (updateSV(x, y)) dragging = "sv";
       else if (updateHue(x, y)) dragging = "hue";
       else dragging = null;
+
       if (dragging) {
-        wheel.setPointerCapture(ev.pointerId);
+        try { (wheel as any).setPointerCapture?.(ev.pointerId); } catch {}
         ev.preventDefault();
       }
     };
+
     const onMove = (ev: PointerEvent) => {
       if (!dragging) return;
+      ev.preventDefault(); // evita scroll/zoom durante el drag en mobile
       const { x, y } = getXY(ev);
-      if (dragging === "sv") updateSV(x, y);
-      else updateHue(x, y);
-    };
-    const onUp = (ev: PointerEvent) => {
-      dragging = null;
-      try { wheel.releasePointerCapture(ev.pointerId); } catch {}
+      if (dragging === "sv") updateSV(x, y); else updateHue(x, y);
     };
 
-    wheel.addEventListener("pointerdown", onDown);
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
+    const endDrag = (ev: PointerEvent) => {
+      dragging = null;
+      try { (wheel as any).releasePointerCapture?.(ev.pointerId); } catch {}
+    };
+
+    wheel.addEventListener("pointerdown", onDown, { passive: false });
+    window.addEventListener("pointermove", onMove as any, { passive: false });
+    window.addEventListener("pointerup", endDrag as any);
+    window.addEventListener("pointercancel", endDrag as any);
+
     return () => {
-      wheel.removeEventListener("pointerdown", onDown);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
+      wheel.removeEventListener("pointerdown", onDown as any);
+      window.removeEventListener("pointermove", onMove as any);
+      window.removeEventListener("pointerup", endDrag as any);
+      window.removeEventListener("pointercancel", endDrag as any);
     };
   }, [hsv, onChange, dpr]);
 
@@ -223,13 +227,11 @@ export default function ColorPicker({
     const ctx = canvas.getContext("2d")!;
     const { width, height } = canvas;
     const size = Math.min(width, height);
-    const cx = width / 2, cy = height / 2;
     const outer = (Math.min(width, height) / 2) - PADDING * dpr;
     const inner = outer - RING_THICKNESS * dpr;
     const side = Math.min(inner * Math.SQRT2, outer * 2 - (RING_THICKNESS * dpr));
     const start = (size - side) / 2;
 
-    // fondo SV (horizontal = S, vertical = V)
     const hueHex = rgbToHex(hsvToRgb({ h, s: 1, v: 1 }));
 
     ctx.clearRect(0, 0, width, height);
@@ -246,7 +248,6 @@ export default function ColorPicker({
     ctx.fillStyle = g2;
     ctx.fillRect(start, start, side, side);
 
-    // borde fino
     ctx.strokeStyle = "#0f172a";
     ctx.lineWidth = 1 * dpr;
     ctx.strokeRect(start - 0.5, start - 0.5, side + 1, side + 1);
@@ -260,7 +261,7 @@ export default function ColorPicker({
     const outer = (Math.min(width, height) / 2) - PADDING * dpr;
     const inner = outer - RING_THICKNESS * dpr;
 
-    // marcador en rueda
+    // marcador HUE (rueda)
     const ang = h * Math.PI / 180;
     const rMid = (outer + inner) / 2;
     const wx = cx + Math.cos(ang) * rMid;
@@ -278,7 +279,7 @@ export default function ColorPicker({
     wctx.stroke();
     wctx.restore();
 
-    // marcador en SV
+    // marcador SV (cuadro)
     const size = sv.width;
     const side = Math.min(inner * Math.SQRT2, outer * 2 - (RING_THICKNESS * dpr));
     const start = (size - side) / 2;
@@ -337,7 +338,11 @@ export default function ColorPicker({
       <div ref={wrapRef} style={{ display: "grid", placeItems: "center" }}>
         <div style={{ position: "relative" }}>
           {/* Eventos SOLO en wheel; SV dibuja por encima pero no captura */}
-          <canvas ref={wheelRef} aria-label="Rueda de color (tono)" />
+          <canvas
+            ref={wheelRef}
+            aria-label="Rueda de color (tono)"
+            style={{ touchAction: "none" }}   // importante para drag táctil
+          />
           <canvas
             ref={svRef}
             aria-label="Cuadro Saturación/Valor"

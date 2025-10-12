@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import DrawingCanvas from "./DrawingCanvas";
-import "./App.css";
 
 const WS_URL =
   import.meta.env.VITE_WS_URL ||
@@ -31,7 +30,7 @@ export default function App() {
         ws.onopen = () => {
           setConnected(true);
           appendLog(`WS open -> ${WS_URL}`);
-          try { ws.send(JSON.stringify({ type: "welcome", payload: Date.now() })); } catch { }
+          try { ws.send(JSON.stringify({ type: "welcome", payload: Date.now() })); } catch {}
         };
 
         ws.onmessage = (ev) => appendLog(`WS in: ${String(ev.data).slice(0, 140)}`);
@@ -52,7 +51,7 @@ export default function App() {
     return () => {
       stop = true;
       if (retry != null) clearTimeout(retry);
-      try { wsRef.current?.close(); } catch { }
+      try { wsRef.current?.close(); } catch {}
       wsRef.current = null;
     };
   }, [appendLog]);
@@ -96,30 +95,31 @@ export default function App() {
     }
   }, [prompt, appendLog]);
 
-    <div className="app-root">
-      <header className="app-header">
+  return (
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#0f172a", color: "#e2e8f0" }}>
+      <header style={{ padding: 12, borderBottom: "1px solid #1e293b" }}>
         <strong>Real-time Canvas</strong> — WS: {connected ? "🟢" : "🟥"}
       </header>
-      <main className="app-main">
-        <aside className="app-aside">
+      <main style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 12, padding: 12, flex: 1 }}>
+        <aside style={{ border: "1px solid #1e293b", borderRadius: 8, padding: 12 }}>
           <div style={{ marginBottom: 8, fontWeight: 600 }}>Aviso de IA</div>
           <input
-            className="app-input"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && sendPrompt()}
             placeholder="Escribe tu prompt"
+            style={{ width: "100%", padding: "10px 12px", background: "#0b1220", color: "#fff", border: "1px solid #222", borderRadius: 8 }}
           />
-          <button onClick={sendPrompt} className="app-button">
+          <button onClick={sendPrompt} style={{ marginTop: 8, width: "100%", padding: 10, borderRadius: 8, border: 0, background: "#a855f7", color: "#fff" }}>
             Enviar mensaje
           </button>
-          <div className="app-info">Se guardará en <code>proc.txt</code> y actualizará tu Text TOP si existe.</div>
-          <div className="app-log">
+          <div style={{ marginTop: 12, fontSize: 12, opacity: 0.7 }}>Se guardará en <code>proc.txt</code> y actualizará tu Text TOP si existe.</div>
+          <div style={{ marginTop: 16, maxHeight: 200, overflow: "auto", fontSize: 12, background: "#0b1220", border: "1px solid #222", borderRadius: 8, padding: 8 }}>
             {log.length === 0 ? <div style={{ opacity: 0.5 }}>Sin mensajes…</div> : log.map((l, i) => <div key={i}>{l}</div>)}
           </div>
         </aside>
 
-        <section className="app-section">
+        <section style={{ display: "grid", placeItems: "center" }}>
           <DrawingCanvas
             width={900}
             height={560}
@@ -133,7 +133,6 @@ export default function App() {
           />
         </section>
       </main>
-    </div>
     </div>
   );
 }

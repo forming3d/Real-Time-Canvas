@@ -1,7 +1,6 @@
 import React, {
   useRef, useEffect, useLayoutEffect, useCallback, forwardRef, useImperativeHandle,
 } from "react";
-import "../styles/DrawingCanvas.css";
 
 type Point = { x: number; y: number; t?: number };
 
@@ -183,15 +182,14 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [onFrame, rasterFps, jpegQuality, rasterMax]);
 
+  return (
     <canvas
       ref={canvasRef}
-      className="drawing-canvas"
-      width={width}
-      height={height}
-    />
+      style={{ display: "block", width: `${width}px`, height: `${height}px`, touchAction: "none", backgroundColor: "transparent" }}
     />
   );
 });
 
 DrawingCanvas.displayName = "DrawingCanvas";
 export default DrawingCanvas;
+

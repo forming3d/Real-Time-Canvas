@@ -1,281 +1,236 @@
-import React, { useRef, useEffect, useLayoutEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
-import { Point, StrokeData } from '../types';
+import React, {
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  forwardRef,
+  useImperativeHandle,
+} from 'react';
 
-export interface DrawingCanvasRef {
-  getCanvasState: () => ImageData | null;
-  getCurrentStroke: () => StrokeData | null;
-  clearCanvas: () => void;
-}
+type Point = { x: number; y: number; t?: number };
+type Stroke = { points: Point[]; color: string; brushSize: number };
 
-interface DrawingCanvasProps {
-  color: string;
-  brushSize: number;
-  isEraser: boolean;
-  onStrokeComplete: (strokeData: StrokeData) => void;
-  onStrokeEnd: () => void;
+export type DrawingCanvasProps = {
+  // tamaño CSS del lienzo (en px). Internamente se multiplica por DPR para nitidez.
+  width?: number;
+  height?: number;
+
+  // apariencia del trazo
+  color?: string;
+  brushSize?: number;
+
+  // callbacks opcionales
+  onStroke?: (stroke: Stroke) => void;
   onFrame?: (dataUrl: string) => void;
-  canvasStateToRestore: ImageData | null;
-  config?: {
-    maxPointsPerStroke: number;
-    sendFrequency: number;
-    rasterFps?: number;
-  };
-}
 
-export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
-  color,
-  brushSize,
-  isEraser,
-  onStrokeComplete,
-  onStrokeEnd,
-  onFrame,
-  canvasStateToRestore,
-  config = { maxPointsPerStroke: 1000, sendFrequency: 16, rasterFps: 8 }
-}, ref) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const contextRef = useRef<CanvasRenderingContext2D | null>(null);
-  
-  // Estados de dibujo
-  const isDrawingRef = useRef(false);
-  const lastPositionRef = useRef<Point | null>(null);
-  const currentStrokeRef = useRef<Point[]>([]);
-  const strokeStartTimeRef = useRef<number>(0);
-  const lastSendTimeRef = useRef<number>(0);
-  const rafRef = useRef<number | null>(null);
-  const lastFrameTimeRef = useRef<number>(0);
+  // control de rasterización para onFrame
+  rasterMax?: number;       // lado mayor máx del frame (default 512)
+  rasterFps?: number;       // frames por segundo (default 8)
+  jpegQuality?: number;     // calidad JPEG 0..1 (default 0.7)
+};
 
-  useImperativeHandle(ref, () => ({
-    getCanvasState: () => {
-      const canvas = canvasRef.current;
-      const context = contextRef.current;
-      if (canvas && context) {
-        return context.getImageData(0, 0, canvas.width, canvas.height);
-      }
-      return null;
+export type DrawingCanvasRef = {
+  clear: () => void;
+};
+
+const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
+  (
+    {
+      width = 800,
+      height = 500,
+      color = '#ffffff',
+      brushSize = 8,
+      onStroke,
+      onFrame,
+      rasterMax = 512,
+      rasterFps = 8,
+      jpegQuality = 0.7,
     },
-    getCurrentStroke: () => {
-      if (currentStrokeRef.current.length > 0) {
-        return {
-          points: [...currentStrokeRef.current],
-          color,
-          brushSize,
-          timestamp: strokeStartTimeRef.current
-        };
-      }
-      return null;
-    },
-    clearCanvas: () => {
-      const canvas = canvasRef.current;
-      const context = contextRef.current;
-      if (canvas && context) {
-        context.clearRect(0, 0, canvas.width, canvas.height);
-      }
-    }
-  }));
+    ref
+  ) => {
+    const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const offscreenRef = useRef<HTMLCanvasElement | null>(null);
+    const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
 
-  // ResizeObserver + HiDPI optimization
-  const resizeToContainer = useCallback(() => {
-    const canvas = canvasRef.current;
-    const ctx = contextRef.current;
-    const container = containerRef.current;
-    if (!canvas || !ctx || !container) return;
+    const drawingRef = useRef(false);
+    const lastPtRef = useRef<Point | null>(null);
+    const strokePtsRef = useRef<Point[]>([]);
+    const colorRef = useRef(color);
+    const sizeRef = useRef(brushSize);
 
-    const rect = container.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    const w = Math.max(1, Math.floor(rect.width * dpr));
-    const h = Math.max(1, Math.floor(rect.height * dpr));
-    
-    if (canvas.width !== w || canvas.height !== h) {
-      // Preservar contenido anterior
-      const prevCanvas = document.createElement("canvas");
-      prevCanvas.width = canvas.width;
-      prevCanvas.height = canvas.height;
-      if (canvas.width && canvas.height) {
-        const prevCtx = prevCanvas.getContext("2d")!;
-        prevCtx.drawImage(canvas, 0, 0);
-      }
+    const lastFrameTimeRef = useRef(0);
+    const rafRef = useRef<number | null>(null);
 
-      // Actualizar dimensiones del canvas
-      canvas.width = w;
-      canvas.height = h;
-      canvas.style.width = `${rect.width}px`;
-      canvas.style.height = `${rect.height}px`;
+    // API pública
+    useImperativeHandle(ref, () => ({
+      clear() {
+        if (!canvasRef.current || !ctxRef.current) return;
+        const c = canvasRef.current;
+        const dpr = window.devicePixelRatio || 1;
+        ctxRef.current.clearRect(0, 0, c.width, c.height);
+        // Fondo transparente, si quieres negro: pinta rect negro
+        // ctxRef.current.fillStyle = '#000';
+        // ctxRef.current.fillRect(0, 0, c.width, c.height);
+      },
+    }));
 
-      // Configurar contexto con DPR
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.lineCap = 'round';
+    // preparar canvas con DPR
+    useLayoutEffect(() => {
+      const c = canvasRef.current;
+      if (!c) return;
+      const dpr = window.devicePixelRatio || 1;
+      c.width = Math.round(width * dpr);
+      c.height = Math.round(height * dpr);
+      c.style.width = `${width}px`;
+      c.style.height = `${height}px`;
+
+      const ctx = c.getContext('2d', { desynchronized: true });
+      if (!ctx) return;
+      ctxRef.current = ctx;
       ctx.lineJoin = 'round';
-      ctx.strokeStyle = isEraser ? "rgba(0,0,0,1)" : color;
-      ctx.lineWidth = brushSize;
-      ctx.globalCompositeOperation = isEraser ? "destination-out" : "source-over";
+      ctx.lineCap = 'round';
+      ctx.imageSmoothingEnabled = true;
+      // si quisieras fondo negro:
+      // ctx.fillStyle = '#000';
+      // ctx.fillRect(0, 0, c.width, c.height);
+    }, [width, height]);
 
-      // Restaurar contenido anterior
-      if (prevCanvas.width && prevCanvas.height) {
-        ctx.drawImage(prevCanvas, 0, 0, prevCanvas.width, prevCanvas.height, 0, 0, w, h);
-      }
-    }
-  }, [color, brushSize, isEraser]);
+    // mantener refs actualizados
+    useEffect(() => {
+      colorRef.current = color;
+    }, [color]);
+    useEffect(() => {
+      sizeRef.current = brushSize;
+    }, [brushSize]);
 
-  // Inicializar canvas y ResizeObserver
-  useLayoutEffect(() => {
-    const canvas = canvasRef.current;
-    const container = containerRef.current;
-    if (!canvas || !container) return;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    contextRef.current = ctx;
-    resizeToContainer();
-    
-    // ResizeObserver para cambios de tamaño
-    const resizeObserver = new ResizeObserver(resizeToContainer);
-    resizeObserver.observe(container);
-    
-    return () => {
-      resizeObserver.disconnect();
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
-      }
-    };
-  }, [resizeToContainer]);
-
-  // Actualizar propiedades del contexto cuando cambien
-  useEffect(() => {
-    const ctx = contextRef.current;
-    if (!ctx) return;
-    
-    ctx.strokeStyle = isEraser ? "rgba(0,0,0,1)" : color;
-    ctx.lineWidth = brushSize;
-    ctx.globalCompositeOperation = isEraser ? "destination-out" : "source-over";
-  }, [color, brushSize, isEraser]);
-
-  // Restaurar estado del canvas
-  useEffect(() => {
-    const context = contextRef.current;
-    const canvas = canvasRef.current;
-    if (context && canvas && canvasStateToRestore) {
-      context.putImageData(canvasStateToRestore, 0, 0);
-    }
-  }, [canvasStateToRestore]);
-
-  // Obtener posición del pointer event (unificado para mouse/touch/pen)
-  const getPointerPosition = useCallback((e: PointerEvent | React.PointerEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return null;
-    const rect = canvas.getBoundingClientRect();
-    return { 
-      x: e.clientX - rect.left, 
-      y: e.clientY - rect.top 
-    };
-  }, []);
-
-  // Iniciar dibujo
-  const startDrawing = useCallback((e: React.PointerEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    
-    // Capturar el pointer para eventos posteriores
-    canvas.setPointerCapture(e.pointerId);
-    
-    const pos = getPointerPosition(e);
-    if (!pos) return;
-    
-    isDrawingRef.current = true;
-    lastPositionRef.current = pos;
-    currentStrokeRef.current = [pos];
-    strokeStartTimeRef.current = Date.now();
-    lastSendTimeRef.current = Date.now();
-  }, [getPointerPosition]);
-
-  // Dibujar con throttling inteligente
-  const draw = useCallback((e: React.PointerEvent) => {
-    if (!isDrawingRef.current) return;
-    e.preventDefault();
-    
-    const pos = getPointerPosition(e);
-    if (!pos || !lastPositionRef.current) return;
-    
-    const context = contextRef.current;
-    if (context) {
-      context.beginPath();
-      context.moveTo(lastPositionRef.current.x, lastPositionRef.current.y);
-      context.lineTo(pos.x, pos.y);
-      context.stroke();
-    }
-    
-    // Agregar punto al trazo actual
-    currentStrokeRef.current.push(pos);
-    
-    // RAF on-demand + throttling inteligente
-    const now = performance.now();
-    if (!rafRef.current) {
-      rafRef.current = requestAnimationFrame(() => {
-        rafRef.current = null;
-        
-        // Enviar datos si ha pasado suficiente tiempo y no excede el límite
-        if (now - lastSendTimeRef.current >= config.sendFrequency && 
-            currentStrokeRef.current.length < config.maxPointsPerStroke) {
-          
-          const partialStroke: StrokeData = {
-            points: [...currentStrokeRef.current],
-            color,
-            brushSize,
-            timestamp: strokeStartTimeRef.current
-          };
-          onStrokeComplete(partialStroke);
-          lastSendTimeRef.current = now;
-        }
-
-        // Enviar frame rasterizado para TouchDesigner (fallback si no hay Pillow)
-        if (typeof onFrame === 'function' && canvasRef.current) {
-          const minInterval = 1000 / (config.rasterFps || 8);
-          if (now - lastFrameTimeRef.current >= minInterval) {
-            const dataUrl = canvasRef.current.toDataURL('image/png');
-            onFrame(dataUrl);
-            lastFrameTimeRef.current = now;
-          }
-        }
-      });
-    }
-    
-    lastPositionRef.current = pos;
-  }, [getPointerPosition, color, brushSize, config.sendFrequency, config.maxPointsPerStroke, config.rasterFps, onStrokeComplete, onFrame]);
-
-  // Finalizar dibujo
-  const stopDrawing = useCallback(() => {
-    if (!isDrawingRef.current) return;
-    
-    isDrawingRef.current = false;
-    
-    // Enviar trazo completo si tiene puntos
-    if (currentStrokeRef.current.length > 0) {
-      const completeStroke: StrokeData = {
-        points: [...currentStrokeRef.current],
-        color,
-        brushSize,
-        timestamp: strokeStartTimeRef.current
+    // utilidades de coordenadas
+    const getCanvasPoint = useCallback((e: PointerEvent | Touch | MouseEvent): Point => {
+      const c = canvasRef.current!;
+      const rect = c.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const clientX = (e as PointerEvent).clientX ?? (e as Touch).clientX ?? 0;
+      const clientY = (e as PointerEvent).clientY ?? (e as Touch).clientY ?? 0;
+      return {
+        x: (clientX - rect.left) * dpr,
+        y: (clientY - rect.top) * dpr,
+        t: performance.now(),
       };
-      onStrokeComplete(completeStroke);
-    }
-    
-    lastPositionRef.current = null;
-    currentStrokeRef.current = [];
-    onStrokeEnd();
-  }, [onStrokeEnd, color, brushSize, onStrokeComplete]);
+    }, []);
 
-  return (
-    <div ref={containerRef} className="h-full w-full">
+    // dibujo del segmento
+    const drawSegment = useCallback((p0: Point, p1: Point) => {
+      const ctx = ctxRef.current;
+      if (!ctx) return;
+      ctx.strokeStyle = colorRef.current;
+      ctx.lineWidth = sizeRef.current * (window.devicePixelRatio || 1);
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.stroke();
+    }, []);
+
+    // eventos de puntero
+    useEffect(() => {
+      const c = canvasRef.current!;
+      if (!c) return;
+
+      const onDown = (ev: PointerEvent) => {
+        c.setPointerCapture(ev.pointerId);
+        drawingRef.current = true;
+        const p = getCanvasPoint(ev);
+        lastPtRef.current = p;
+        strokePtsRef.current = [p];
+      };
+      const onMove = (ev: PointerEvent) => {
+        if (!drawingRef.current) return;
+        const p = getCanvasPoint(ev);
+        const lp = lastPtRef.current;
+        if (lp) {
+          drawSegment(lp, p);
+        }
+        lastPtRef.current = p;
+        strokePtsRef.current.push(p);
+      };
+      const onUp = (_ev: PointerEvent) => {
+        if (!drawingRef.current) return;
+        drawingRef.current = false;
+        // emite stroke si lo piden
+        if (onStroke && strokePtsRef.current.length > 0) {
+          onStroke({
+            points: [...strokePtsRef.current],
+            color: colorRef.current,
+            brushSize: sizeRef.current,
+          });
+        }
+        strokePtsRef.current = [];
+        lastPtRef.current = null;
+      };
+
+      c.addEventListener('pointerdown', onDown);
+      c.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+
+      return () => {
+        c.removeEventListener('pointerdown', onDown);
+        c.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      };
+    }, [getCanvasPoint, drawSegment, onStroke]);
+
+    // bucle de rasterización (envío de frames comprimidos)
+    useEffect(() => {
+      if (!onFrame) return;
+      const loop = () => {
+        rafRef.current = requestAnimationFrame(loop);
+
+        const now = performance.now();
+        const minDelta = 1000 / (rasterFps || 8);
+        if (now - lastFrameTimeRef.current < minDelta) return;
+        lastFrameTimeRef.current = now;
+
+        const src = canvasRef.current;
+        if (!src) return;
+
+        if (!offscreenRef.current) offscreenRef.current = document.createElement('canvas');
+        const off = offscreenRef.current;
+        const sw = src.width, sh = src.height;
+        const maxSide = Math.max(64, rasterMax || 512);
+        const k = sw >= sh ? maxSide / sw : maxSide / sh;
+        const tw = Math.max(1, Math.round(sw * k));
+        const th = Math.max(1, Math.round(sh * k));
+        if (off.width !== tw || off.height !== th) {
+          off.width = tw;
+          off.height = th;
+        }
+        const octx = off.getContext('2d')!;
+        octx.clearRect(0, 0, tw, th);
+        octx.drawImage(src, 0, 0, tw, th);
+
+        const q = Math.min(1, Math.max(0.1, jpegQuality || 0.7));
+        const dataUrl = off.toDataURL('image/jpeg', q);
+        onFrame(dataUrl);
+      };
+      rafRef.current = requestAnimationFrame(loop);
+      return () => {
+        if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      };
+    }, [onFrame, rasterFps, rasterMax, jpegQuality]);
+
+    return (
       <canvas
         ref={canvasRef}
-        className="block touch-none select-none"
-        onPointerDown={startDrawing}
-        onPointerMove={draw}
-        onPointerUp={stopDrawing}
-        onPointerCancel={stopDrawing}
-        onPointerLeave={stopDrawing}
+        style={{
+          display: 'block',
+          width: `${width}px`,
+          height: `${height}px`,
+          touchAction: 'none',
+          backgroundColor: 'transparent',
+        }}
       />
-    </div>
-  );
-});
+    );
+  }
+);
+
+DrawingCanvas.displayName = 'DrawingCanvas';
+export default DrawingCanvas;

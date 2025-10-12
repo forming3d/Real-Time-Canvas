@@ -19,19 +19,13 @@ export default function App() {
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
 
-  // UI
   const [prompt, setPrompt] = useState("");
   const [color, setColor] = useState("#ff4d4d");
   const [brushSize, setBrushSize] = useState(18);
   const [mode, setMode] = useState<"brush"|"eraser">("brush");
-  const [log, setLog] = useState<string[]>([]);
   const canvasRef = useRef<DrawingCanvasRef | null>(null);
 
-  const appendLog = useCallback((s: string) => {
-    setLog((L) => [s, ...L].slice(0, 300));
-  }, []);
-
-  // Conexión WS + reconexión
+  // Conexión WS
   useEffect(() => {
     let stop = false;
     let retry: number | null = null;
@@ -44,22 +38,16 @@ export default function App() {
 
         ws.onopen = () => {
           setConnected(true);
-          appendLog(`WS open → ${WS_URL}`);
           try { ws.send(JSON.stringify({ type: "welcome", payload: Date.now() })); } catch {}
-        };
-        ws.onmessage = (ev) => {
-          const txt = typeof ev.data === "string" ? ev.data : "[binary]";
-          appendLog(`WS in: ${txt.slice(0, 160)}`);
         };
         ws.onclose = () => {
           if (stop) return;
           setConnected(false);
-          appendLog("WS closed, retrying…");
           retry = window.setTimeout(connect, 1500) as unknown as number;
         };
-        ws.onerror = () => appendLog("WS error");
-      } catch (e) {
-        appendLog(`WS connect error: ${String(e)}`);
+        ws.onerror = () => {/* opcional: console.warn('WS error') */};
+        ws.onmessage = () => {/* ocultamos logs en UI */};
+      } catch {
         retry = window.setTimeout(connect, 2000) as unknown as number;
       }
     };
@@ -71,9 +59,20 @@ export default function App() {
       try { wsRef.current?.close(); } catch {}
       wsRef.current = null;
     };
-  }, [appendLog]);
+  }, []);
 
-  // Envío imagen a TD
+  // Keep-alive JSON cada 30s (evita cierres por inactividad sin usar ping/pong)
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const ws = wsRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        try { ws.send(JSON.stringify({ type: "keepalive", payload: Date.now() })); } catch {}
+      }
+    }, 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Envío imagen (PNG con alfa)
   const sendDraw = useCallback((dataUrl: string) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -85,32 +84,29 @@ export default function App() {
     sendDraw(dataUrl);
   }, [sendDraw]);
 
-  // Opcional: stroke vector (sigue activo por si lo usas, TD lo ignora)
+  // Opcional: stroke vector (TD lo ignora y no se muestra en UI)
   const handleStroke = useCallback((stroke: any) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     try { ws.send(JSON.stringify({ type: "stroke", payload: stroke })); } catch {}
   }, []);
 
-  // Prompt → TD (solo con botón)
+  // Prompt → TD (botón)
   const sendPrompt = useCallback(() => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const text = prompt.trim();
     if (!text) return;
-    try {
-      ws.send(JSON.stringify({ type: "proc", payload: text })); // tu callback maneja 'proc' y 'prompt'
-      appendLog(`PROC out: ${text}`);
-    } catch {}
-  }, [prompt, appendLog]);
+    try { ws.send(JSON.stringify({ type: "proc", payload: text })); } catch {}
+  }, [prompt]);
 
-  // Borrar canvas (sin teclas, solo botón)
+  // Borrar canvas (PNG vacío)
   const clearCanvas = useCallback(() => {
-    const dataUrl = canvasRef.current?.clear(); // limpia y devuelve snapshot
-    if (dataUrl) sendDraw(dataUrl);            // notifica a TD (MovieFileIn se refresca)
+    const dataUrl = canvasRef.current?.clear();
+    if (dataUrl) sendDraw(dataUrl);
   }, [sendDraw]);
 
-  // sincroniza UI → canvas (sin atajos)
+  // UI -> canvas
   useEffect(() => { canvasRef.current?.setColor(color); }, [color]);
   useEffect(() => { canvasRef.current?.setBrushSize(brushSize); }, [brushSize]);
 
@@ -118,7 +114,6 @@ export default function App() {
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", minHeight: "100vh", background: "#0f172a", color: "#e2e8f0" }}>
-      {/* Panel lateral con paleta, sin atajos */}
       <aside style={{ borderRight: "1px solid #1e293b", padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <strong>Conexión</strong>
@@ -185,7 +180,6 @@ export default function App() {
           <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>{toolLabel}</div>
         </div>
 
-        {/* Borrar (solo botón) */}
         <button
           onClick={clearCanvas}
           style={{ marginTop: 4, width: "100%", padding: 10, borderRadius: 8, border: "1px solid #334155", background: "#0b1220", color: "#e2e8f0", cursor: "pointer" }}
@@ -193,14 +187,6 @@ export default function App() {
         >
           Borrar canvas
         </button>
-
-        {/* Log */}
-        <div>
-          <div style={{ fontWeight: 600, marginBottom: 6 }}>Log</div>
-          <div style={{ maxHeight: 220, overflow: "auto", fontSize: 12, background: "#0b1220", border: "1px solid #222", borderRadius: 8, padding: 8, whiteSpace: "pre-wrap" }}>
-            {log.length === 0 ? <div style={{ opacity: 0.5 }}>Sin mensajes…</div> : log.map((l, i) => <div key={i}>{l}</div>)}
-          </div>
-        </div>
       </aside>
 
       {/* Área de dibujo */}
@@ -216,7 +202,6 @@ export default function App() {
             mode={mode}
             rasterMax={512}
             rasterFps={8}
-            jpegQuality={0.7}
             onFrame={handleFrame}
             onStroke={handleStroke}
           />

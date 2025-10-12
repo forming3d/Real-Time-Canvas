@@ -3,125 +3,53 @@ const express = require("express");
 const http = require("http");
 const { WebSocketServer } = require("ws");
 
+const DIST_DIR = path.resolve(__dirname, "dist");
+
 const app = express();
+app.disable("x-powered-by");
+
+// sirve los estáticos del build de Vite
+app.use(express.static(DIST_DIR, { fallthrough: true }));
+
+// healthcheck simple para Render
+app.get("/healthz", (_req, res) => res.status(200).send("ok"));
+
+// crea HTTP server y WebSocket server en /ws
 const server = http.createServer(app);
-
-// WS en /ws
-const wss = new WebSocketServer({ 
-  server, 
+const wss = new WebSocketServer({
+  server,
   path: "/ws",
-  perMessageDeflate: false // Mejor para TouchDesigner
+  perMessageDeflate: false, // menor latencia
 });
 
-// Estadísticas de conexión
-let connectedClients = 0;
-let totalMessages = 0;
-
+// logs básicos + eco opcional
 wss.on("connection", (ws, req) => {
-  connectedClients++;
-  const clientId = `${req.socket.remoteAddress}:${req.socket.remotePort}`;
-  console.log(`TouchDesigner client connected: ${clientId} (${connectedClients} total)`);
+  const ip = req.socket.remoteAddress;
+  console.log("WS connection:", ip);
+  try {
+    ws.send(JSON.stringify({ type: "welcome", payload: Date.now() }));
+  } catch {}
 
-  // Enviar mensaje de bienvenida optimizado para TouchDesigner
-  ws.send(JSON.stringify({ 
-    type: "welcome", 
-    timestamp: Date.now(),
-    clientId,
-    protocol: "touchdesigner-v1"
-  }));
-
-  ws.on("message", (msg) => {
-    try {
-      totalMessages++;
-      const message = JSON.parse(msg.toString());
-      
-      // Validar estructura del mensaje
-      if (!message.type || !message.payload) {
-        console.warn(`Invalid message format from ${clientId}:`, message);
-        return;
-      }
-
-      // Log de mensajes para debugging (solo tipos específicos)
-      if (message.type === 'stroke') {
-        console.log(`Stroke data from ${clientId}: ${message.payload.points?.length || 0} points`);
-      } else if (message.type === 'prompt') {
-        console.log(`Prompt from ${clientId}: "${message.payload.prompt}"`);
-      }
-
-      // Broadcast optimizado - solo a clientes conectados
-      const clientsToSend = [];
-      for (const client of wss.clients) {
-        if (client.readyState === client.OPEN && client !== ws) {
-          clientsToSend.push(client);
-        }
-      }
-
-      // Enviar a TouchDesigner y otros clientes
-      const messageToSend = JSON.stringify(message);
-      clientsToSend.forEach(client => {
-        try {
-          client.send(messageToSend);
-        } catch (error) {
-          console.error(`Error sending to client:`, error);
-        }
-      });
-
-      console.log(`Message broadcasted to ${clientsToSend.length} clients`);
-      
-    } catch (error) {
-      console.error(`Error processing message from ${clientId}:`, error);
-    }
+  ws.on("message", (data) => {
+    // Aquí puedes inspeccionar/filtrar/broadcast
+    // Broadcast opcional (comenta si no quieres reenviar a todos):
+    // for (const client of wss.clients) {
+    //   if (client !== ws && client.readyState === 1) client.send(data);
+    // }
   });
 
-  ws.on("close", (code, reason) => {
-    connectedClients--;
-    console.log(`TouchDesigner client disconnected: ${clientId} (${connectedClients} total) - Code: ${code}, Reason: ${reason}`);
-  });
-
-  ws.on("error", (error) => {
-    console.error(`WebSocket error for ${clientId}:`, error);
-  });
-
-  // Ping/Pong para mantener conexión viva
-  const pingInterval = setInterval(() => {
-    if (ws.readyState === ws.OPEN) {
-      ws.ping();
-    } else {
-      clearInterval(pingInterval);
-    }
-  }, 30000); // 30 segundos
-
-  ws.on("pong", () => {
-    // Cliente respondió al ping
-  });
+  ws.on("close", () => console.log("WS closed:", ip));
+  ws.on("error", (e) => console.warn("WS error:", e?.message));
 });
 
-// Endpoint de estadísticas para monitoreo
-app.get("/api/stats", (req, res) => {
-  res.json({
-    connectedClients,
-    totalMessages,
-    uptime: process.uptime(),
-    memory: process.memoryUsage(),
-    timestamp: Date.now()
-  });
+// fallback SPA: sirve index.html para cualquier ruta
+app.get("*", (_req, res) => {
+  res.sendFile(path.join(DIST_DIR, "index.html"));
 });
 
-// servir Vite compilado
-const dist = path.join(__dirname, "dist");
-console.log("Serving static from:", dist);
-app.use(express.static(dist));
-
-// healthcheck (para Render)
-app.get("/healthz", (_, res) => res.send("ok"));
-
-// SPA fallback
-app.get("*", (_, res) => res.sendFile(path.join(dist, "index.html")));
-
-const PORT = process.env.PORT || 3000; // Cambiado de 443 a 3000 para desarrollo
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Real-Time Canvas Server running on port ${PORT}`);
-  console.log(`📡 WebSocket endpoint: ws://localhost:${PORT}/ws`);
-  console.log(`📊 Stats endpoint: http://localhost:${PORT}/api/stats`);
-  console.log(`🎨 TouchDesigner ready for connections`);
+  console.log(`HTTP on :${PORT}`);
+  console.log(`WS    on :${PORT}/ws`);
 });
+

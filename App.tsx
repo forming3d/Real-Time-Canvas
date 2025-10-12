@@ -352,7 +352,7 @@ export default function App() {
       </aside>
 
       {/* Área de dibujo: ocupa TODO el espacio disponible */}
-      <main style={{ padding: 8 }}>
+      <main style={{ padding: 16 }}>
         <div
           style={{
             width: "100%",

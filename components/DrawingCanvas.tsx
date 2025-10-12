@@ -1,26 +1,28 @@
 import React, {
-  useRef, useEffect, useLayoutEffect, useCallback, forwardRef, useImperativeHandle,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  forwardRef,
+  useImperativeHandle,
 } from "react";
 
 type Point = { x: number; y: number; t?: number };
+type Stroke = { points: Point[]; color: string; brushSize: number };
 
 export type DrawingCanvasProps = {
   width?: number;
   height?: number;
   color?: string;
   brushSize?: number;
-  // callbacks
-  onStroke?: (stroke: { points: Point[]; color: string; brushSize: number }) => void;
+  onStroke?: (stroke: Stroke) => void;
   onFrame?: (dataUrl: string) => void;
-  // rasterización
-  rasterMax?: number;      // lado máx del snapshot (p.ej., 512)
-  rasterFps?: number;      // snapshots/segundo mientras dibujas
+  rasterMax?: number;      // lado máx del snapshot (p.ej. 512)
+  rasterFps?: number;      // snapshots/seg durante el trazo
   jpegQuality?: number;    // 0.1–1.0
 };
 
-export type DrawingCanvasRef = {
-  clear: () => void;
-};
+export type DrawingCanvasRef = { clear: () => void };
 
 const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
   width = 800,
@@ -103,6 +105,7 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
       strokePtsRef.current = [lastPtRef.current];
       c.setPointerCapture(ev.pointerId);
     };
+
     const onMove = (ev: PointerEvent) => {
       if (!drawingRef.current) return;
       const p = getCanvasPoint(ev);
@@ -111,6 +114,7 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
       lastPtRef.current = p;
       strokePtsRef.current.push(p);
     };
+
     const snapshot = () => {
       if (!onFrame || !canvasRef.current) return;
       if (!offscreenRef.current) offscreenRef.current = document.createElement("canvas");
@@ -126,18 +130,20 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
       octx.clearRect(0, 0, tw, th);
       octx.drawImage(src, 0, 0, tw, th);
       const q = Math.min(1, Math.max(0.1, jpegQuality || 0.7));
-      const dataUrl = off.toDataURL("image/jpeg", q); // si necesitas alfa: "image/png"
+      const dataUrl = off.toDataURL("image/jpeg", q); // si necesitas alfa: usa "image/png"
       onFrame(dataUrl);
     };
-    const onUp = (ev: PointerEvent) => {
+
+    const onUp = (_ev: PointerEvent) => {
       if (!drawingRef.current) return;
       drawingRef.current = false;
+
       if (onStroke && strokePtsRef.current.length > 0) {
         onStroke({ points: [...strokePtsRef.current], color: colorRef.current, brushSize: sizeRef.current });
       }
       strokePtsRef.current = [];
       lastPtRef.current = null;
-      snapshot(); // ← ENVÍA draw al finalizar trazo
+      snapshot(); // snapshot final del trazo
     };
 
     c.addEventListener("pointerdown", onDown);
@@ -160,7 +166,7 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
       const minDelta = 1000 / (rasterFps || 8);
       if (now - lastFrameTimeRef.current < minDelta) return;
       lastFrameTimeRef.current = now;
-      // snapshot reducido
+
       const src = canvasRef.current;
       if (!src) return;
       if (!offscreenRef.current) offscreenRef.current = document.createElement("canvas");
@@ -176,7 +182,7 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
       octx.drawImage(src, 0, 0, tw, th);
       const q = Math.min(1, Math.max(0.1, jpegQuality || 0.7));
       const dataUrl = off.toDataURL("image/jpeg", q);
-      onFrame(dataUrl); // ← ENVÍA draw durante el trazo
+      onFrame(dataUrl);
     };
     loop();
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
@@ -192,4 +198,5 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
 
 DrawingCanvas.displayName = "DrawingCanvas";
 export default DrawingCanvas;
+
 

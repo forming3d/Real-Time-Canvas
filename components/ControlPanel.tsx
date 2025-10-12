@@ -199,36 +199,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       <CollapsibleSection title="Brush Settings" icon={<BrushIcon className="w-5 h-5 text-green-400"/>} isOpen={openSections.brush} onToggle={() => toggleSection('brush')}>
         <div className="space-y-4">
            {/* Paleta de colores con mejor accesibilidad */}
-           <div className="space-y-2">
-              <h3 className="text-sm font-medium text-slate-400">Color Palette</h3>
-              <div role="radiogroup" aria-label="Color selection" className="grid grid-cols-5 gap-2">
-                   {PREDEFINED_COLORS.map((colorOption) => {
-                     const isSelected = color === colorOption.value;
-                     return (
-                         <button
-                             key={colorOption.value}
-                             role="radio"
-                             aria-checked={isSelected}
-                             onClick={() => setColor(colorOption.value)}
-                             className={`w-full aspect-square rounded-full cursor-pointer transition-transform duration-150 transform hover:scale-110 shadow-lg ${colorOption.className} ${isSelected ? 'ring-2 ring-purple-400 ring-offset-2 ring-offset-slate-800' : ''}`}
-                             title={colorOption.name}
-                             aria-label={`Select ${colorOption.name} color`}
-                         />
-                     );
-                   })}
-                   <div className="relative w-full aspect-square">
-                       <input
-                           id="color-picker"
-                           type="color"
-                           value={color}
-                           onChange={(e) => setColor(e.target.value)}
-                           className="w-full h-full p-0 bg-transparent border-0 rounded-full cursor-pointer appearance-none [&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border-0"
-                           aria-label="Custom color picker"
-                           title="Custom color picker"
-                       />
-                   </div>
-              </div>
-           </div>
+            import ColorPicker from "./ColorPicker";
+            ...
+            <ColorPicker color={color} onChange={setColor} showHistory />
+
 
            {/* Herramientas */}
            <div className="space-y-3">

@@ -16,12 +16,13 @@ export type DrawingCanvasProps = {
   onFrame?: (dataUrl: string) => void;
   rasterMax?: number;
   rasterFps?: number;
+  /** se mantiene por compatibilidad pero ya no se usa en PNG */
   jpegQuality?: number;
 };
 
 export type DrawingCanvasRef = {
-  clear: () => string | undefined;             // limpia y devuelve snapshot
-  snapshot: (mime?: string, q?: number) => string | undefined; // devuelve dataURL actual
+  clear: () => string | undefined;                   // limpia y devuelve snapshot (PNG)
+  snapshot: (mime?: string) => string | undefined;   // por defecto PNG
   setColor: (hex: string) => void;
   setBrushSize: (v: number) => void;
 };
@@ -36,7 +37,6 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
   onFrame,
   rasterMax = 512,
   rasterFps = 8,
-  jpegQuality = 0.7,
 }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const offscreenRef = useRef<HTMLCanvasElement | null>(null);
@@ -57,10 +57,10 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
       const c = canvasRef.current, ctx = ctxRef.current;
       if (!c || !ctx) return;
       ctx.clearRect(0, 0, c.width, c.height);
-      return makeSnapshot(); // devolvemos el dataURL por si quieren enviarlo
+      return makeSnapshot("image/png"); // ← PNG transparente
     },
-    snapshot(mime = "image/jpeg", q = jpegQuality ?? 0.7) {
-      return makeSnapshot(mime, q);
+    snapshot(mime = "image/png") {                   // ← por defecto PNG
+      return makeSnapshot(mime);
     },
     setColor(hex: string) { colorRef.current = hex; },
     setBrushSize(v: number) { sizeRef.current = v; },
@@ -107,8 +107,7 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
     ctx.restore();
   }, []);
 
-  // snapshot reducido para enviar al WS
-  const makeSnapshot = (mime = "image/jpeg", q = jpegQuality ?? 0.7): string | undefined => {
+  const makeSnapshot = (mime: "image/png" | "image/jpeg" = "image/png"): string | undefined => {
     if (!canvasRef.current) return;
     if (!offscreenRef.current) offscreenRef.current = document.createElement("canvas");
     const src = canvasRef.current;
@@ -122,8 +121,7 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
     const octx = off.getContext("2d")!;
     octx.clearRect(0, 0, tw, th);
     octx.drawImage(src, 0, 0, tw, th);
-    const quality = Math.min(1, Math.max(0.1, q));
-    return off.toDataURL(mime, quality);
+    return off.toDataURL(mime); // PNG preserva transparencia
   };
 
   useEffect(() => {
@@ -145,7 +143,7 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
       lastPtRef.current = p;
       strokePtsRef.current.push(p);
     };
-    const onUp = (_ev: PointerEvent) => {
+    const onUp = () => {
       if (!drawingRef.current) return;
       drawingRef.current = false;
       if (onStroke && strokePtsRef.current.length > 0) {
@@ -154,7 +152,7 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
       strokePtsRef.current = [];
       lastPtRef.current = null;
       if (onFrame) {
-        const d = makeSnapshot();
+        const d = makeSnapshot("image/png");
         if (d) onFrame(d);
       }
     };
@@ -167,9 +165,8 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
-  }, [drawSeg, getPoint, onFrame, onStroke, jpegQuality, rasterMax]);
+  }, [drawSeg, getPoint, onFrame, onStroke, rasterMax]);
 
-  // raster periódico mientras dibujas
   useEffect(() => {
     if (!onFrame) return;
     const loop = () => {
@@ -179,12 +176,12 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
       const minDelta = 1000 / (rasterFps || 8);
       if (now - lastFrameTimeRef.current < minDelta) return;
       lastFrameTimeRef.current = now;
-      const d = makeSnapshot();
+      const d = makeSnapshot("image/png");
       if (d) onFrame(d);
     };
     loop();
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [onFrame, rasterFps, jpegQuality, rasterMax]);
+  }, [onFrame, rasterFps, rasterMax]);
 
   return (
     <canvas

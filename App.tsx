@@ -19,7 +19,7 @@ export default function App() {
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
 
-  // UI (diseño anterior)
+  // UI
   const [prompt, setPrompt] = useState("");
   const [color, setColor] = useState("#ff4d4d");
   const [brushSize, setBrushSize] = useState(18);
@@ -85,44 +85,32 @@ export default function App() {
     sendDraw(dataUrl);
   }, [sendDraw]);
 
-  // Opcional: stroke vector (si te sirve para otras integraciones)
+  // Opcional: stroke vector (sigue activo por si lo usas, TD lo ignora)
   const handleStroke = useCallback((stroke: any) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     try { ws.send(JSON.stringify({ type: "stroke", payload: stroke })); } catch {}
   }, []);
 
-  // Prompt → TD (proc/prompt)
+  // Prompt → TD (solo con botón)
   const sendPrompt = useCallback(() => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const text = prompt.trim();
     if (!text) return;
     try {
-      ws.send(JSON.stringify({ type: "proc", payload: text }));
+      ws.send(JSON.stringify({ type: "proc", payload: text })); // tu callback maneja 'proc' y 'prompt'
       appendLog(`PROC out: ${text}`);
     } catch {}
   }, [prompt, appendLog]);
 
-  // Borrar canvas (botón + tecla)
+  // Borrar canvas (sin teclas, solo botón)
   const clearCanvas = useCallback(() => {
-    const dataUrl = canvasRef.current?.clear(); // limpia y devuelve snapshot vacío
-    if (dataUrl) sendDraw(dataUrl);            // IMPORTANTÍSIMO: notificar a TD
+    const dataUrl = canvasRef.current?.clear(); // limpia y devuelve snapshot
+    if (dataUrl) sendDraw(dataUrl);            // notifica a TD (MovieFileIn se refresca)
   }, [sendDraw]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      // Delete / Backspace / C
-      if (e.key === "Delete" || e.key === "Backspace" || e.key.toLowerCase() === "c") {
-        e.preventDefault();
-        clearCanvas();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [clearCanvas]);
-
-  // sincroniza UI → canvas
+  // sincroniza UI → canvas (sin atajos)
   useEffect(() => { canvasRef.current?.setColor(color); }, [color]);
   useEffect(() => { canvasRef.current?.setBrushSize(brushSize); }, [brushSize]);
 
@@ -130,7 +118,7 @@ export default function App() {
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", minHeight: "100vh", background: "#0f172a", color: "#e2e8f0" }}>
-      {/* Panel lateral (diseño anterior con paleta) */}
+      {/* Panel lateral con paleta, sin atajos */}
       <aside style={{ borderRight: "1px solid #1e293b", padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <strong>Conexión</strong>
@@ -143,8 +131,7 @@ export default function App() {
             id="prompt"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && sendPrompt()}
-            placeholder="Escribe tu prompt y pulsa Ctrl/Cmd+Enter…"
+            placeholder="Escribe tu prompt…"
             rows={5}
             style={{ width: "100%", resize: "vertical", padding: "10px 12px", background: "#0b1220", color: "#fff", border: "1px solid #222", borderRadius: 8 }}
           />
@@ -153,7 +140,7 @@ export default function App() {
           </button>
         </div>
 
-        {/* Paleta de colores */}
+        {/* Paleta */}
         <div>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Paleta de colores</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
@@ -195,10 +182,10 @@ export default function App() {
               🧽 Borrador
             </button>
           </div>
-          <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>{toolLabel} · atajo: C / Supr</div>
+          <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>{toolLabel}</div>
         </div>
 
-        {/* Borrar */}
+        {/* Borrar (solo botón) */}
         <button
           onClick={clearCanvas}
           style={{ marginTop: 4, width: "100%", padding: 10, borderRadius: 8, border: "1px solid #334155", background: "#0b1220", color: "#e2e8f0", cursor: "pointer" }}
@@ -216,7 +203,7 @@ export default function App() {
         </div>
       </aside>
 
-      {/* Área de dibujo (igual que antes) */}
+      {/* Área de dibujo */}
       <main style={{ display: "grid", placeItems: "center", padding: 12 }}>
         <div style={{ width: "min(95vw, 1100px)", height: "min(75vh, 680px)",
           display: "grid", placeItems: "center", border: "1px solid #1e293b", borderRadius: 12, background: "#0b1220" }}>

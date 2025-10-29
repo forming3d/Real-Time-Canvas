@@ -1,24 +1,23 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import DrawingCanvas, { DrawingCanvasRef } from './DrawingCanvas';
-import ControlPanel from './ControlPanel';
-import { useWebSocket } from './useWebSocket';
+import DrawingCanvas, { DrawingCanvasRef } from './components/DrawingCanvas';
+import ControlPanel from './components/ControlPanel';
+import { useWebSocket } from './hooks/useWebSocket';
 
-// Lee room de la URL o crea una
-const ROOM = new URLSearchParams(location.search).get('room') || Math.random().toString(36).slice(2);
+const ROOM =
+  new URLSearchParams(location.search).get('room') ??
+  Math.random().toString(36).slice(2);
 
-// Construye la URL de WS en base al host actual o a VITE_WS_URL si lo configuras
-function buildWsUrlBase(room: string): string {
-  const envUrl = (import.meta as any).env?.VITE_WS_URL as string | undefined;
-  if (envUrl) {
-    const u = new URL(envUrl);
+function buildWsUrl(room: string) {
+  const env = (import.meta as any).env?.VITE_WS_URL as string | undefined;
+  if (env) {
+    const u = new URL(env);
     u.pathname = '/ws';
-    if (!u.searchParams.has('room')) u.searchParams.set('room', room);
-    if (!u.searchParams.has('role')) u.searchParams.set('role', 'canvas');
+    u.searchParams.set('room', room);
+    u.searchParams.set('role', 'canvas');
     return u.toString();
   }
-  const { protocol, host } = window.location;
-  const scheme = protocol === 'https:' ? 'wss' : 'ws';
-  const u = new URL(`${scheme}://${host}/ws`);
+  const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+  const u = new URL(`${scheme}://${location.host}/ws`);
   u.searchParams.set('room', room);
   u.searchParams.set('role', 'canvas');
   return u.toString();
@@ -26,48 +25,53 @@ function buildWsUrlBase(room: string): string {
 
 export default function App() {
   const [prompt, setPrompt] = useState('');
-  const [color, setColor] = useState('#ff4d4d');
-  const [brushSize, setBrushSize] = useState(16);
+  const [color, setColor] = useState('#00e5ff');
+  const [brushSize, setBrushSize] = useState(14);
   const [mode, setMode] = useState<'brush' | 'eraser'>('brush');
 
-  const wsUrl = useMemo(() => buildWsUrlBase(ROOM), []);
-  const { connectionStatus, connect, disconnect, sendMessage } = useWebSocket(wsUrl, {
-    autoReconnect: true,
-    maxReconnectAttempts: 10,
-    reconnectInterval: 1000,
-  });
+  const wsUrl = useMemo(() => buildWsUrl(ROOM), []);
+  const { connectionStatus, sendMessage, connect, disconnect } = useWebSocket(
+    wsUrl,
+    { autoReconnect: true, maxReconnectAttempts: 10, reconnectInterval: 1200 }
+  );
 
   const canvasRef = useRef<DrawingCanvasRef | null>(null);
 
-  // Enviar prompt a TD
+  const onStroke = useCallback(
+    (stroke: any) => {
+      sendMessage(JSON.stringify({ type: 'stroke', payload: stroke }));
+    },
+    [sendMessage]
+  );
+
+  const onFrame = useCallback(
+    (dataUrl: string) => {
+      sendMessage(JSON.stringify({ type: 'canvas', payload: dataUrl }));
+    },
+    [sendMessage]
+  );
+
   const sendPrompt = useCallback(() => {
-    const msg = JSON.stringify({ type: 'prompt', payload: prompt });
-    sendMessage(msg);
+    sendMessage(JSON.stringify({ type: 'prompt', payload: prompt }));
   }, [prompt, sendMessage]);
 
-  // Recibir snapshot raster del canvas (si quieres raster en TD)
-  const onFrame = useCallback((dataUrl: string) => {
-    // manda imagen comprimida (puedes recortar/optimizar en TD)
-    sendMessage(JSON.stringify({ type: 'canvas', payload: dataUrl }));
-  }, [sendMessage]);
-
-  // Enviar stroke vectorial (si quieres vector en TD)
-  const onStroke = useCallback((stroke: any) => {
-    sendMessage(JSON.stringify({ type: 'stroke', payload: stroke }));
-  }, [sendMessage]);
-
-  // Acciones de historia
   const undo = useCallback(() => canvasRef.current?.undo(), []);
   const redo = useCallback(() => canvasRef.current?.redo(), []);
-  const clearCanvas = useCallback(() => canvasRef.current?.clear(), []);
-
-  const connected = connectionStatus === 'CONNECTED';
+  const clear = useCallback(() => canvasRef.current?.clear(), []);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', height: '100dvh', background: '#0f172a', color: '#e2e8f0', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '320px 1fr',
+        gap: 16,
+        padding: 16,
+        minHeight: '100dvh'
+      }}
+    >
       <ControlPanel
         room={ROOM}
-        connected={connected}
+        connected={connectionStatus === 'CONNECTED'}
         prompt={prompt}
         setPrompt={setPrompt}
         sendPrompt={sendPrompt}
@@ -79,46 +83,48 @@ export default function App() {
         setMode={setMode}
         undo={undo}
         redo={redo}
-        clearCanvas={clearCanvas}
-        canUndo={true}
-        canRedo={true}
+        clearCanvas={clear}
       />
 
-      <div style={{ display: 'grid', placeItems: 'center', padding: 16 }}>
+      <main
+        style={{
+          display: 'grid',
+          placeItems: 'center',
+          width: '100%',
+          height: 'calc(100dvh - 32px)'
+        }}
+      >
         <div
           style={{
-            width: 'min(90vw, 1024px)',
+            width: 'min(96vw, 1100px)',
             aspectRatio: '1/1',
             border: '1px solid #1e293b',
             borderRadius: 12,
             overflow: 'hidden',
-            background: '#0b1220',
+            background: '#0b1220'
           }}
+          aria-label="Lienzo interactivo"
         >
           <DrawingCanvas
             ref={canvasRef}
             color={color}
             brushSize={brushSize}
+            mode={mode}
             onStroke={onStroke}
             onFrame={onFrame}
             rasterFps={8}
-            targetSize={512}
-            // modo pincel/borrador: tu componente lo lee desde props
-            mode={mode}
+            targetSize={768}
           />
         </div>
 
-        {/* Controles de conexión */}
         <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-          <button onClick={connect} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>
-            Conectar
-          </button>
-          <button onClick={disconnect} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>
-            Desconectar
-          </button>
-          <span style={{ alignSelf: 'center', opacity: .8 }}>Estado: {connectionStatus}</span>
+          <button onClick={connect}>Conectar WS</button>
+          <button onClick={disconnect}>Desconectar WS</button>
+          <span style={{ alignSelf: 'center', opacity: 0.75 }}>
+            Estado: {connectionStatus}
+          </span>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

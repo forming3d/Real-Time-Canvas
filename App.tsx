@@ -135,6 +135,9 @@ export default function App() {
     []
   );
 
+  // Optimización para tablet: collapse de elementos en móvil
+  const [showPrompt, setShowPrompt] = useState(false);
+  
   // Prompt → TD
   const sendPrompt = useCallback(() => {
     const ws = wsRef.current;
@@ -143,8 +146,12 @@ export default function App() {
     if (!text) return;
     try {
       ws.send(JSON.stringify({ type: "proc", payload: text }));
+      if (isMobile) {
+        // En móvil, ocultar el área de prompt tras enviar
+        setShowPrompt(false);
+      }
     } catch {}
-  }, [prompt]);
+  }, [prompt, isMobile]);
 
   // Acciones de Canvas
   const clearCanvas = useCallback(() => {
@@ -173,29 +180,58 @@ export default function App() {
 
   const toolLabel = useMemo(() => (mode === "brush" ? "Modo Pincel" : "Modo Borrador"), [mode]);
 
+  const [windowSize, setWindowSize] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight
+  });
+  
+  // Detectar cambio de tamaño de ventana
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowSize({
+        width: window.innerWidth,
+        height: window.innerHeight
+      });
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  
+  // Determinar si es tablet/móvil (< 768px) o desktop (≥ 768px)
+  const isMobile = windowSize.width < 768;
+
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "minmax(260px, 300px) 1fr",
+        // Cambiar de columnas (desktop) a filas (móvil/tablet) dependiendo del ancho
+        gridTemplateColumns: isMobile ? "1fr" : "minmax(260px, 300px) 1fr",
+        gridTemplateRows: isMobile ? "auto 1fr" : "1fr",
         height: "100dvh",
         background: "#0f172a",
         color: "#e2e8f0",
+        overflow: "hidden", // Evitar scroll en el contenedor principal
       }}
     >
       {/* Sidebar */}
       <aside
         style={{
-          borderRight: "1px solid #1e293b",
+          borderRight: isMobile ? "none" : "1px solid #1e293b",
+          borderBottom: isMobile ? "1px solid #1e293b" : "none",
           padding: 12,
           display: "flex",
           flexDirection: "column",
           gap: 12,
           overflow: "auto",
+          maxHeight: isMobile ? "40vh" : "100vh", // Limitar altura en móvil para evitar scroll
         }}
       >
         {/* Conexión / Sala */}
-        <details style={{ border: "1px solid #334155", borderRadius: 8, background: "#0b1220" }}>
+        <details 
+          open={!isMobile} 
+          style={{ border: "1px solid #334155", borderRadius: 8, background: "#0b1220" }}
+        >
           <summary
             style={{
               listStyle: "none",
@@ -228,43 +264,71 @@ export default function App() {
           </div>
         </details>
 
-        {/* Prompt */}
+        {/* Prompt (colapsable en móvil) */}
         <div>
-          <label htmlFor="prompt" style={{ fontSize: 12, opacity: 0.75, display: "block", marginBottom: 6 }}>
-            Aviso de IA (PROC/PROMPT)
-          </label>
-          <textarea
-            id="prompt"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Escribe tu prompt…"
-            rows={5}
-            style={{
-              width: "100%",
-              resize: "vertical",
-              padding: "10px 12px",
-              background: "#0b1220",
-              color: "#fff",
-              border: "1px solid #222",
-              borderRadius: 8,
-              outline: "none",
-            }}
-          />
-          <button
-            onClick={sendPrompt}
-            style={{
-              marginTop: 8,
-              width: "100%",
-              padding: 10,
-              borderRadius: 8,
-              border: 0,
-              background: "#a855f7",
-              color: "#fff",
-              cursor: "pointer",
-            }}
-          >
-            Enviar mensaje
-          </button>
+          {isMobile ? (
+            <button
+              onClick={() => setShowPrompt(!showPrompt)}
+              style={{
+                width: "100%",
+                padding: 10,
+                borderRadius: 8,
+                border: "1px solid #334155",
+                background: showPrompt ? "#164e63" : "#0b1220",
+                color: "#e2e8f0",
+                textAlign: "left",
+                cursor: "pointer",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <span>Aviso de IA (PROC/PROMPT)</span>
+              <span>{showPrompt ? "▲" : "▼"}</span>
+            </button>
+          ) : (
+            <label htmlFor="prompt" style={{ fontSize: 12, opacity: 0.75, display: "block", marginBottom: 6 }}>
+              Aviso de IA (PROC/PROMPT)
+            </label>
+          )}
+          
+          {(!isMobile || showPrompt) && (
+            <>
+              <textarea
+                id="prompt"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="Escribe tu prompt…"
+                rows={isMobile ? 3 : 5}
+                style={{
+                  width: "100%",
+                  resize: "vertical",
+                  padding: "10px 12px",
+                  background: "#0b1220",
+                  color: "#fff",
+                  border: "1px solid #222",
+                  borderRadius: 8,
+                  outline: "none",
+                  marginTop: isMobile ? 8 : 0,
+                }}
+              />
+              <button
+                onClick={sendPrompt}
+                style={{
+                  marginTop: 8,
+                  width: "100%",
+                  padding: 10,
+                  borderRadius: 8,
+                  border: 0,
+                  background: "#a855f7",
+                  color: "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                Enviar mensaje
+              </button>
+            </>
+          )}
         </div>
 
         {/* Color */}
@@ -347,17 +411,25 @@ export default function App() {
         </button>
       </aside>
 
-      {/* Área de dibujo: ahora un wrapper EXACTO de 512×512 */}
-      <main style={{ padding: 24, display: "grid", placeItems: "center" }}>
+      {/* Área de dibujo: adaptativo para tablets */}
+      <main style={{ 
+        padding: isMobile ? 12 : 24, 
+        display: "grid", 
+        placeItems: "center",
+        overflow: "hidden" 
+      }}>
         <div
           style={{
-            width: 512,
-            height: 512,
+            width: isMobile ? "100%" : 512,
+            height: isMobile ? "auto" : 512,
+            aspectRatio: "1 / 1", // Mantener proporción cuadrada en móvil
+            maxWidth: "100%",
+            maxHeight: isMobile ? "calc(60vh - 24px)" : "100%", // Ajustar para evitar scroll
             border: "1px solid #1e293b",
             borderRadius: 12,
             background: "#0b1220",
             overflow: "hidden",
-            padding: 12,
+            padding: isMobile ? 8 : 12,
             boxSizing: "border-box",
             display: "grid",
           }}

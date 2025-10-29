@@ -27,7 +27,7 @@ function hsvToRgb({ h, s, v }: HSV): RGB {
 }
 
 function rgbToHex({ r, g, b }: RGB) {
-  // ✅ línea corregida (sin pad...String roto)
+  // ✅ línea corregida
   return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
@@ -62,15 +62,9 @@ type ColorPickerProps = {
   showHistory?: boolean;                  // muestra paleta de recientes
 };
 
-/** ========= Componente =========
- * Minimalista, accesible y sin dependencias.
- * - Soporta input nativo <input type="color" />
- * - Slider de tamaño HS(V) básicos para UX agradable
- * - Historial opcional
- */
+/** ========= Componente ========= */
 const ColorPicker: React.FC<ColorPickerProps> = ({ color, onChange, showHistory = false }) => {
   const [hex, setHex] = useState(color || "#ff4d4d");
-
   useEffect(() => { setHex(color); }, [color]);
 
   // Estado HSV derivado

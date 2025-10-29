@@ -27,7 +27,7 @@ function hsvToRgb({ h, s, v }: HSV): RGB {
 }
 
 function rgbToHex({ r, g, b }: RGB) {
-  // ✅ línea corregida
+  // ✅ corregido
   return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
@@ -57,9 +57,9 @@ function rgbToHsv({ r, g, b }: RGB): HSV {
 
 /** ========= Props ========= */
 type ColorPickerProps = {
-  color: string;                          // hex actual, ej: #ff4d4d
-  onChange: (hex: string) => void;        // callback al cambiar
-  showHistory?: boolean;                  // muestra paleta de recientes
+  color: string;
+  onChange: (hex: string) => void;
+  showHistory?: boolean;
 };
 
 /** ========= Componente ========= */
@@ -72,7 +72,7 @@ const ColorPicker: React.FC<ColorPickerProps> = ({ color, onChange, showHistory 
 
   const [h, setH] = useState(hsv.h);
   const [s, setS] = useState(hsv.s);
-  const [v, setV] = useState(Math.max(0.4, hsv.v)); // evita negros totales por UX
+  const [v, setV] = useState(Math.max(0.4, hsv.v)); // UX
 
   // Recalcular hex cuando cambien sliders
   useEffect(() => {
@@ -88,7 +88,7 @@ const ColorPicker: React.FC<ColorPickerProps> = ({ color, onChange, showHistory 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hex]);
 
-  // Historial simple (en memoria del componente)
+  // Historial simple
   const [history, setHistory] = useState<string[]>([]);
   useEffect(() => {
     if (!showHistory) return;
@@ -101,7 +101,6 @@ const ColorPicker: React.FC<ColorPickerProps> = ({ color, onChange, showHistory 
 
   return (
     <div aria-label="Selector de color" style={{ display: "grid", gap: 8 }}>
-      {/* Color nativo (rápido) */}
       <label style={{ display: "grid", gap: 6 }}>
         <span style={{ fontSize: 12, opacity: .8 }}>Color</span>
         <input
@@ -113,48 +112,30 @@ const ColorPicker: React.FC<ColorPickerProps> = ({ color, onChange, showHistory 
         />
       </label>
 
-      {/* Controles HSV simples */}
       <div style={{ display: "grid", gap: 8 }}>
         <label style={{ display: "grid", gap: 6 }}>
           <span style={{ fontSize: 12, opacity: .8 }}>Tono (H)</span>
-          <input
-            type="range" min={0} max={360} value={Math.round(h)}
-            onChange={(e) => setH(Number(e.target.value))}
-          />
+          <input type="range" min={0} max={360} value={Math.round(h)} onChange={(e) => setH(Number(e.target.value))} />
         </label>
 
         <label style={{ display: "grid", gap: 6 }}>
           <span style={{ fontSize: 12, opacity: .8 }}>Saturación (S)</span>
-          <input
-            type="range" min={0} max={100} value={Math.round(s * 100)}
-            onChange={(e) => setS(clamp01(Number(e.target.value) / 100))}
-          />
+          <input type="range" min={0} max={100} value={Math.round(s * 100)} onChange={(e) => setS(clamp01(Number(e.target.value) / 100))} />
         </label>
 
         <label style={{ display: "grid", gap: 6 }}>
           <span style={{ fontSize: 12, opacity: .8 }}>Valor (V)</span>
-          <input
-            type="range" min={0} max={100} value={Math.round(v * 100)}
-            onChange={(e) => setV(clamp01(Number(e.target.value) / 100))}
-          />
+          <input type="range" min={0} max={100} value={Math.round(v * 100)} onChange={(e) => setV(clamp01(Number(e.target.value) / 100))} />
         </label>
       </div>
 
-      {/* Muestra */}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div
-          aria-label="Muestra de color"
-          style={{
-            width: 28, height: 28, borderRadius: 6, border: "1px solid #334155",
-            background: hex
-          }}
-        />
+        <div aria-label="Muestra de color" style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #334155", background: hex }} />
         <code style={{ fontSize: 12, background: "#111827", border: "1px solid #222", padding: "2px 6px", borderRadius: 6 }}>
           {hex.toUpperCase()}
         </code>
       </div>
 
-      {/* Historial opcional */}
       {showHistory && history.length > 0 && (
         <div style={{ display: "grid", gap: 6 }}>
           <div style={{ fontSize: 12, opacity: .8 }}>Recientes</div>
@@ -165,13 +146,7 @@ const ColorPicker: React.FC<ColorPickerProps> = ({ color, onChange, showHistory 
                 onClick={() => setHex(c)}
                 aria-label={`Usar ${c}`}
                 title={c}
-                style={{
-                  height: 22,
-                  borderRadius: 6,
-                  border: "1px solid #334155",
-                  background: c,
-                  cursor: "pointer"
-                }}
+                style={{ height: 22, borderRadius: 6, border: "1px solid #334155", background: c, cursor: "pointer" }}
               />
             ))}
           </div>

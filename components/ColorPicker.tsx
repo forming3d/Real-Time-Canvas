@@ -111,6 +111,7 @@ export default function ColorPicker({
     if (!wheel || !sv) return;
 
     let dragging: "hue" | "sv" | null = null;
+    let activePointerId: number | null = null;
 
     const geom = () => {
       const size = wheel.width;
@@ -162,43 +163,120 @@ export default function ColorPicker({
       return true;
     };
 
-    const onDown = (ev: PointerEvent) => {
-      const { x, y } = getXY(ev);
-      // prioridad: SV si está dentro del cuadrado; si no, HUE si está en el anillo
-      if (setSVByXY(x, y)) dragging = "sv";
-      else if (tryStartHue(x, y)) { setHueByXY(x, y); dragging = "hue"; }
-      else dragging = null;
+    // Función para comprobar si un punto está cerca del marcador SV (para mejorar la precisión de agarre)
+    const isNearSVMarker = (x: number, y: number) => {
+      const { side, start } = geom();
+      const sx = start + hsv.s * side;
+      const sy = start + (1 - hsv.v) * side;
+      const dx = x - sx;
+      const dy = y - sy;
+      // Distancia al centro del marcador SV (radio de 15px para facilitar agarre)
+      return Math.sqrt(dx * dx + dy * dy) <= 15 * dpr;
+    };
 
-      if (dragging) {
-        try { wheel.setPointerCapture(ev.pointerId); } catch {}
-        ev.preventDefault();
+    // Función para comprobar si un punto está cerca del marcador HUE
+    const isNearHueMarker = (x: number, y: number) => {
+      const { cx, cy, outer, inner } = geom();
+      const rMid = (outer + inner) / 2;
+      const ang = hsv.h * Math.PI / 180;
+      const hx = cx + Math.cos(ang) * rMid;
+      const hy = cy + Math.sin(ang) * rMid;
+      const dx = x - hx;
+      const dy = y - hy;
+      // Distancia al centro del marcador HUE (radio de 15px para facilitar agarre)
+      return Math.sqrt(dx * dx + dy * dy) <= 15 * dpr;
+    };
+
+    const onDown = (ev: PointerEvent) => {
+      if (activePointerId !== null) return; // Ya hay un arrastre activo
+      
+      const { x, y } = getXY(ev);
+      
+      // Prioridad mejorada:
+      // 1. Verificar primero si estamos cerca de algún marcador para mejorar la precisión de agarre
+      // 2. Luego comprobar si estamos dentro del cuadrado SV o del anillo HUE
+      
+      if (isNearSVMarker(x, y)) {
+        dragging = "sv";
+        setSVByXY(x, y);
+      } 
+      else if (isNearHueMarker(x, y)) {
+        dragging = "hue";
+        setHueByXY(x, y);
       }
+      else if (setSVByXY(x, y)) {
+        dragging = "sv";
+      }
+      else if (tryStartHue(x, y)) {
+        dragging = "hue";
+        setHueByXY(x, y);
+      }
+      else {
+        dragging = null;
+        return; // No hacer nada si el clic no es en una zona válida
+      }
+
+      activePointerId = ev.pointerId;
+      ev.preventDefault();
+      ev.stopPropagation();
+      
+      // Capturamos el puntero en el elemento que recibió el evento
+      try { 
+        ev.target.setPointerCapture(ev.pointerId); 
+      } catch {}
     };
 
     const onMove = (ev: PointerEvent) => {
-      if (!dragging) return;
+      if (dragging === null || ev.pointerId !== activePointerId) return;
+      
       ev.preventDefault();
+      ev.stopPropagation();
+      
       const { x, y } = getXY(ev);
-      if (dragging === "sv") setSVByXY(x, y);
-      else setHueByXY(x, y); // ← no comprobamos radio durante el drag
+      if (dragging === "sv") {
+        setSVByXY(x, y);
+      } else {
+        setHueByXY(x, y);
+      }
     };
 
     const endDrag = (ev: PointerEvent) => {
-      if (!dragging) return;
+      if (ev.pointerId !== activePointerId) return;
+      
+      if (dragging) {
+        try { 
+          ev.target.releasePointerCapture(ev.pointerId); 
+        } catch {}
+      }
+      
       dragging = null;
-      try { wheel.releasePointerCapture(ev.pointerId); } catch {}
+      activePointerId = null;
     };
 
-    wheel.addEventListener("pointerdown", onDown, { passive: false });
-    wheel.addEventListener("pointermove", onMove, { passive: false });
-    wheel.addEventListener("pointerup", endDrag);
-    wheel.addEventListener("pointercancel", endDrag);
+    // Añadir eventos tanto al canvas de rueda como al de SV para mejor captura
+    const addEvents = (el: HTMLElement) => {
+      el.addEventListener("pointerdown", onDown, { passive: false });
+      el.addEventListener("pointermove", onMove, { passive: false });
+      el.addEventListener("pointerup", endDrag);
+      el.addEventListener("pointercancel", endDrag);
+      el.addEventListener("pointerleave", endDrag);
+    };
+
+    const removeEvents = (el: HTMLElement) => {
+      el.removeEventListener("pointerdown", onDown);
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", endDrag);
+      el.removeEventListener("pointercancel", endDrag);
+      el.removeEventListener("pointerleave", endDrag);
+    };
+
+    // Configurar ambos canvas para capturar eventos
+    addEvents(wheel);
+    addEvents(sv);
 
     return () => {
-      wheel.removeEventListener("pointerdown", onDown as any);
-      wheel.removeEventListener("pointermove", onMove as any);
-      wheel.removeEventListener("pointerup", endDrag as any);
-      wheel.removeEventListener("pointercancel", endDrag as any);
+      removeEvents(wheel);
+      removeEvents(sv);
     };
   }, [hsv, onChange, dpr]);
 
@@ -352,7 +430,7 @@ export default function ColorPicker({
           <canvas
             ref={svRef}
             aria-label="Cuadro Saturación/Valor"
-            style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+            style={{ position: "absolute", inset: 0, touchAction: "none" }}
           />
         </div>
       </div>

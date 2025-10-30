@@ -1,39 +1,37 @@
-import { useCallback, useRef, useState } from 'react';
+import { useState, useCallback } from 'react';
 
-export default function useHistory<T>(initial: T[]) {
-  const [list, setList] = useState<T[]>(initial);
-  const past = useRef<T[][]>([]);
-  const future = useRef<T[][]>([]);
+export const useHistory = <T>(initialState: T) => {
+  const [history, setHistory] = useState<T[]>([initialState]);
+  const [currentIndex, setCurrentIndex] = useState(0);
 
-  const push = useCallback((fn: (prev: T[]) => T[]) => {
-    setList((prev) => {
-      past.current.push(prev);
-      future.current = [];
-      return fn(prev);
-    });
-  }, []);
+  const state = history[currentIndex];
+  const canUndo = currentIndex > 0;
+  const canRedo = currentIndex < history.length - 1;
+
+  const setState = useCallback((newState: T, overwrite = false) => {
+    if (overwrite) {
+        const newHistory = [...history];
+        newHistory[currentIndex] = newState;
+        setHistory(newHistory);
+    } else {
+        const newHistory = history.slice(0, currentIndex + 1);
+        newHistory.push(newState);
+        setHistory(newHistory);
+        setCurrentIndex(newHistory.length - 1);
+    }
+  }, [currentIndex, history]);
 
   const undo = useCallback(() => {
-    const p = past.current.pop();
-    if (p) {
-      future.current.push(list);
-      setList(p);
+    if (canUndo) {
+      setCurrentIndex(currentIndex - 1);
     }
-  }, [list]);
+  }, [canUndo, currentIndex]);
 
   const redo = useCallback(() => {
-    const f = future.current.pop();
-    if (f) {
-      past.current.push(list);
-      setList(f);
+    if (canRedo) {
+      setCurrentIndex(currentIndex + 1);
     }
-  }, [list]);
+  }, [canRedo, currentIndex]);
 
-  const clear = useCallback(() => {
-    past.current.push(list);
-    future.current = [];
-    setList([]);
-  }, [list]);
-
-  return [list, push, undo, redo, clear] as const;
-}
+  return { state, setState, undo, redo, canUndo, canRedo };
+};

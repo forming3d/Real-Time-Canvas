@@ -1,20 +1,32 @@
-export type ConnectionStatus =
-  | 'DISCONNECTED'
-  | 'CONNECTING'
-  | 'CONNECTED'
-  | 'RECONNECTING'
-  | 'ERROR';
+export enum ConnectionStatus {
+  DISCONNECTED = 'DISCONNECTED',
+  CONNECTING = 'CONNECTING',
+  CONNECTED = 'CONNECTED',
+  ERROR = 'ERROR',
+}
 
-export type StrokePoint = { x: number; y: number; p: number };
-export type Stroke = {
-  id: string;
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export interface StrokeData {
+  points: Point[];
   color: string;
-  size: number;
-  points: StrokePoint[];
-  mode: 'brush' | 'eraser';
-};
+  brushSize: number;
+  timestamp: number;
+}
 
-export type CanvasMessage =
-  | { type: 'stroke'; payload: Stroke }
-  | { type: 'canvas'; payload: string } // dataURL
-  | { type: 'prompt'; payload: string };
+export interface TouchDesignerMessage {
+  type: 'stroke' | 'prompt' | 'canvas' | 'welcome' | 'draw';
+  payload: any; // Puede ser string (draw/prompt), objeto (stroke/canvas), etc.
+}
+
+export interface TouchDesignerConfig {
+  sendMode: 'vector' | 'raster' | 'hybrid';
+  compressionLevel: number;
+  maxPointsPerStroke: number;
+  sendFrequency: number;
+  enableReconnection: boolean;
+  maxReconnectAttempts: number;
+}

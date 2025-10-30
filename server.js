@@ -1,3 +1,4 @@
+// server.js  (ESM)
 import express from "express";
 import { createServer } from "http";
 import { WebSocketServer } from "ws";
@@ -13,7 +14,7 @@ const wss = new WebSocketServer({ noServer: true });
 
 const PORT = process.env.PORT || 3000;
 
-// rooms: Set de sockets por room
+// ---- Salas (rooms) ----
 const rooms = new Map(); // Map<string, Set<WebSocket>>
 
 function getSearchParams(req) {
@@ -35,11 +36,8 @@ wss.on("connection", (ws, request) => {
   set.add(ws);
 
   ws.on("message", (data) => {
-    // Broadcast a los de la misma sala
     for (const client of set) {
-      if (client !== ws && client.readyState === 1) {
-        client.send(data);
-      }
+      if (client !== ws && client.readyState === 1) client.send(data);
     }
   });
 
@@ -48,22 +46,17 @@ wss.on("connection", (ws, request) => {
     if (set.size === 0) rooms.delete(room);
   });
 
-  // Mensaje de bienvenida opcional
   ws.send(JSON.stringify({ t: "hello", room, role }));
 });
 
-// Upgrade HTTP->WS
 server.on("upgrade", (req, socket, head) => {
-  // Deja pasar todas las rutas (Render suele hacer proxy en el root)
   wss.handleUpgrade(req, socket, head, (ws) => {
     wss.emit("connection", ws, req);
   });
 });
 
-// Static de producción (Vite build)
+// Sirve la app construida por Vite
 app.use(express.static(path.join(__dirname, "dist")));
-
-// SPA fallback
 app.get("*", (_req, res) => {
   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });

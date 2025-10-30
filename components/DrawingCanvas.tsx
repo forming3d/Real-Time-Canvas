@@ -1,246 +1,139 @@
-import { useEffect, useRef } from "react";
-import useWebSocket from "../hooks/useWebSocket";
+import { useEffect, useRef, useState } from "react";
 
 type Props = {
-  wsUrl: string;
-  room: string;
-  color: string;
-  size: number;
-  mode: "draw" | "erase";
-  onApiReady: (api: any) => void;
-  onConnectionChange?: (isOpen: boolean) => void;
-};
-
-type DrawMsg = {
-  t: "draw";
-  room: string;
-  x0: number; y0: number; // normalizados 0..1
-  x1: number; y1: number; // normalizados 0..1
-  color: string;
-  size: number;
-  mode: "draw" | "erase";
+  sendJson: (m: { type: "draw"; payload: string }) => void;
+  width?: number;
+  height?: number;
+  jpegQuality?: number;   // 0..1
+  fps?: number;           // 8–15 va bien
 };
 
 export default function DrawingCanvas({
-  wsUrl, room, color, size, mode, onApiReady, onConnectionChange
+  sendJson,
+  width = 512,
+  height = 512,
+  jpegQuality = 0.7,
+  fps = 10,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const drawing = useRef(false);
+  const lastPt = useRef<{ x: number; y: number } | null>(null);
+  const [brush, setBrush] = useState({ size: 8, color: "#ffffff" });
+  const lastSent = useRef(0);
+  const minInterval = 1000 / Math.max(1, fps);
 
-  const undoStack = useRef<ImageData[]>([]);
-  const redoStack = useRef<ImageData[]>([]);
-
-  const { send, onMessage, readyState } = useWebSocket(wsUrl);
-
-  // expose sender for App/Sidebar (prompts, etc)
   useEffect(() => {
-    (window as any).__RTC_SEND__ = (o: any) => send(o);
-  }, [send]);
+    const c = canvasRef.current!;
+    c.width = width;
+    c.height = height;
+    const ctx = c.getContext("2d")!;
+    ctxRef.current = ctx;
+    // fondo transparente negro (útil para comp)
+    ctx.clearRect(0, 0, c.width, c.height);
+  }, [width, height]);
 
-  // API para App/Sidebar
-  useEffect(() => {
-    const api = {
-      setMode: (m: "draw" | "erase") => { current.mode = m; },
-      getMode: () => current.mode,
-      clearAll: () => clearAll(),
-      undo: () => undo(),
-      redo: () => redo(),
-      setBrushSize: (n: number) => { current.size = n; },
-      getBrushSize: () => current.size,
+  function xy(e: MouseEvent | TouchEvent) {
+    const c = canvasRef.current!;
+    const r = c.getBoundingClientRect();
+    const t = "touches" in e ? e.touches[0] : (e as MouseEvent);
+    return {
+      x: ((t.clientX - r.left) / r.width) * c.width,
+      y: ((t.clientY - r.top) / r.height) * c.height,
     };
-    onApiReady(api);
-  }, [onApiReady]);
+  }
 
-  const current = useRef({ color, size, mode });
-  useEffect(() => { current.current = { color, size, mode }; }, [color, size, mode]);
-
-  useEffect(() => {
-    onConnectionChange?.(readyState === "OPEN");
-  }, [readyState, onConnectionChange]);
-
-  // Buffer 512x512 (con DPR)
-  useEffect(() => {
-    const cvs = canvasRef.current!;
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const W = 512, H = 512;
-    cvs.width = Math.floor(W * dpr);
-    cvs.height = Math.floor(H * dpr);
-    cvs.style.width = `${W}px`;
-    cvs.style.height = `${H}px`;
-    const ctx = cvs.getContext("2d")!;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    pushUndo();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ======= TouchDesigner snapshots =======
-  const lastSnap = useRef<number>(0);
-  const SNAP_MS = 200; // limita cada 200ms
-
-  const sendSnapshot = () => {
-    const now = performance.now();
-    if (now - lastSnap.current < SNAP_MS) return;
-    lastSnap.current = now;
-    try {
-      const dataUrl = canvasRef.current!.toDataURL("image/png");
-      // Mensaje que espera TouchDesigner
-      send({ type: "draw", payload: dataUrl });
-    } catch { /* ignore */ }
-  };
-
-  // ======= Recepción WS de otros clientes (trazos normalizados) =======
-  useEffect(() => {
-    return onMessage((raw) => {
-      try {
-        const msg = JSON.parse(raw.data) as DrawMsg | any;
-        if (msg.t !== "draw" || msg.room !== room) return;
-        // convierte a píxeles (buffer 512x512)
-        drawSegment(
-          { x: msg.x0 * 512, y: msg.y0 * 512 },
-          { x: msg.x1 * 512, y: msg.y1 * 512 },
-          msg.color, msg.size, msg.mode
-        );
-      } catch {}
-    });
-  }, [onMessage, room]);
-
-  // ======= Helpers =======
-  const getCtx = () => canvasRef.current!.getContext("2d")!;
-
-  const drawSegment = (
-    from: {x:number;y:number},
-    to: {x:number;y:number},
-    col: string, sz: number, md: "draw"|"erase"
-  ) => {
-    const ctx = getCtx();
-    ctx.save();
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.lineWidth = sz;
-    if (md === "erase") {
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.strokeStyle = "rgba(0,0,0,1)";
-    } else {
-      ctx.globalCompositeOperation = "source-over";
-      ctx.strokeStyle = col;
-    }
-    ctx.beginPath();
-    ctx.moveTo(from.x, from.y);
-    ctx.lineTo(to.x, to.y);
-    ctx.stroke();
-    ctx.restore();
-  };
-
-  // ======= Input local =======
-  const last = useRef<{x:number;y:number}|null>(null);
-  const toLocal = (ev: MouseEvent | TouchEvent) => {
-    const cvs = canvasRef.current!;
-    const rect = cvs.getBoundingClientRect();
-    const pt = "touches" in ev ? ev.touches[0] : (ev as MouseEvent);
-    return { x: (pt.clientX - rect.left), y: (pt.clientY - rect.top) };
-  };
-
-  const mdown = (e: React.MouseEvent|React.TouchEvent) => {
+  function start(e: MouseEvent | TouchEvent) {
     e.preventDefault();
-    last.current = toLocal(e.nativeEvent as any);
-  };
+    drawing.current = true;
+    lastPt.current = xy(e);
+  }
 
-  const mmove = (e: React.MouseEvent|React.TouchEvent) => {
-    if (!last.current) return;
-    const p = toLocal(e.nativeEvent as any);
+  function move(e: MouseEvent | TouchEvent) {
+    if (!drawing.current) return;
+    e.preventDefault();
+    const p = xy(e);
+    const ctx = ctxRef.current!;
+    const lp = lastPt.current || p;
 
-    // dibuja local
-    drawSegment(last.current, p, current.current.color, current.current.size, current.current.mode);
+    ctx.strokeStyle = brush.color;
+    ctx.lineWidth = brush.size;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
 
-    // broadcast normalizado para otros clientes web
-    const x0 = last.current.x/512, y0 = last.current.y/512;
-    const x1 = p.x/512, y1 = p.y/512;
-    send({
-      t: "draw", room,
-      x0, y0, x1, y1,
-      color: current.current.color,
-      size: current.current.size,
-      mode: current.current.mode
-    });
+    ctx.beginPath();
+    ctx.moveTo(lp.x, lp.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
 
-    // snapshot para TouchDesigner
-    sendSnapshot();
+    lastPt.current = p;
 
-    last.current = p;
-  };
+    // throttle de envío
+    const now = performance.now();
+    if (now - lastSent.current >= minInterval) {
+      lastSent.current = now;
+      const c = canvasRef.current!;
+      // JPEG para bajar tamaño; Touch acepta .jpg y .png
+      const dataURL = c.toDataURL("image/jpeg", jpegQuality);
+      sendJson({ type: "draw", payload: dataURL as any });
+    }
+  }
 
-  const mup = () => {
-    if (last.current) pushUndo();
-    last.current = null;
-    // snapshot final del trazo para TD
-    sendSnapshot();
-  };
+  function end(e: MouseEvent | TouchEvent) {
+    if (!drawing.current) return;
+    e.preventDefault();
+    drawing.current = false;
+    lastPt.current = null;
 
-  // ======= Historial =======
-  const pushUndo = () => {
-    const ctx = getCtx();
-    const img = ctx.getImageData(0, 0, 512, 512);
-    undoStack.current.push(img);
-    if (undoStack.current.length > 50) undoStack.current.shift();
-    redoStack.current = [];
-  };
-  const undo = () => {
-    if (undoStack.current.length <= 1) return;
-    const ctx = getCtx();
-    const last = undoStack.current.pop()!;
-    redoStack.current.push(last);
-    const prev = undoStack.current[undoStack.current.length - 1];
-    ctx.putImageData(prev, 0, 0);
-  };
-  const redo = () => {
-    if (!redoStack.current.length) return;
-    const ctx = getCtx();
-    const img = redoStack.current.pop()!;
-    ctx.putImageData(img, 0, 0);
-    undoStack.current.push(img);
-  };
-  const clearAll = () => {
-    const ctx = getCtx();
-    ctx.clearRect(0, 0, 512, 512);
-    pushUndo();
-    sendSnapshot(); // refleja limpieza en TD
-  };
+    // envío final (sin throttle) para asegurar último trazo
+    const c = canvasRef.current!;
+    const dataURL = c.toDataURL("image/jpeg", jpegQuality);
+    sendJson({ type: "draw", payload: dataURL as any });
+  }
+
+  function clear() {
+    const c = canvasRef.current!;
+    const ctx = ctxRef.current!;
+    ctx.clearRect(0, 0, c.width, c.height);
+    const dataURL = c.toDataURL("image/jpeg", jpegQuality);
+    sendJson({ type: "draw", payload: dataURL as any });
+  }
 
   return (
-    <div
-      style={{
-        position: "relative",
-        width: 540,
-        height: 540,
-        display: "grid",
-        placeItems: "center",
-        background:
-          "radial-gradient(1000px 600px at 60% 50%, rgba(168,85,247,0.08), transparent 60%), #0b0e12",
-        border: "1px solid #101826",
-        borderRadius: 12,
-        boxShadow: "0 0 0 1px #0d1622 inset, 0 10px 30px rgba(0,0,0,.35)",
-      }}
-    >
-      <div style={{ padding: 10, borderRadius: 12, background: "#0d131a", boxShadow: "0 0 0 1px #172232 inset" }}>
-        <canvas
-          ref={canvasRef}
-          onMouseDown={mdown}
-          onMouseMove={mmove}
-          onMouseUp={mup}
-          onMouseLeave={mup}
-          onTouchStart={mdown}
-          onTouchMove={mmove}
-          onTouchEnd={mup}
-          style={{
-            width: 512,
-            height: 512,
-            background: "#0f151d",
-            border: "1px solid #1b2432",
-            borderRadius: 8,
-            touchAction: "none",
-            display: "block",
-          }}
-          aria-label={`canvas ${room} (${readyState})`}
+    <div style={{ display: "grid", gap: 8 }}>
+      <canvas
+        ref={canvasRef}
+        style={{
+          width: "100%",
+          maxWidth: 512,
+          aspectRatio: `${width}/${height}`,
+          border: "1px solid #333",
+          background: "black",
+          touchAction: "none",
+        }}
+        onMouseDown={start}
+        onMouseMove={move}
+        onMouseUp={end}
+        onMouseLeave={end}
+        onTouchStart={start}
+        onTouchMove={move}
+        onTouchEnd={end}
+      />
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <label style={{ color: "#aaa" }}>Brush</label>
+        <input
+          type="color"
+          value={brush.color}
+          onChange={(e) => setBrush((b) => ({ ...b, color: e.target.value }))}
         />
+        <input
+          type="range"
+          min={1}
+          max={64}
+          value={brush.size}
+          onChange={(e) => setBrush((b) => ({ ...b, size: Number(e.target.value) }))}
+        />
+        <button onClick={clear}>Clear</button>
       </div>
     </div>
   );

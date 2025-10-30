@@ -1,414 +1,182 @@
 import React, {
-  useRef, useEffect, useLayoutEffect, useCallback,
-  forwardRef, useImperativeHandle, RefObject
-} from "react";
-
-type Point = { x: number; y: number; t?: number };
-type Mode = "brush" | "eraser";
-type Stroke = { points: Point[]; color: string; brushSize: number; mode: Mode };
-
-export type DrawingCanvasProps = {
-  /** El canvas rellena su contenedor. Dale tamaño al wrapper (en App.tsx lo ponemos 512×512). */
-  color?: string;
-  brushSize?: number;
-  mode?: Mode;
-
-  onStroke?: (stroke: Stroke) => void;
-  onFrame?: (dataUrl: string) => void;   // PNG
-
-  /** FPS de snapshots mientras dibujas */
-  rasterFps?: number;
-
-  /** Tamaño cuadrado forzado del snapshot (por defecto 512 → 512×512) */
-  targetSize?: number;
-};
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import useHistory from '../hooks/useHistory';
 
 export type DrawingCanvasRef = {
-  clear: () => string | undefined;       // limpia y devuelve snapshot (PNG)
-  snapshot: () => string | undefined;    // snapshot actual (PNG)
-  setColor: (hex: string) => void;
-  setBrushSize: (v: number) => void;
-  undo: () => string | undefined;        // devuelve dataURL para enviar a TD
-  redo: () => string | undefined;        // idem
+  undo: () => void;
+  redo: () => void;
+  clear: () => void;
 };
 
-const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
-  color = "#ff4d4d",
-  brushSize = 16,
-  mode = "brush",
-  onStroke,
-  onFrame,
-  rasterFps = 8,
-  targetSize = 512,
-}: DrawingCanvasProps, ref: React.ForwardedRef<DrawingCanvasRef>) => {
+type Point = { x: number; y: number; p: number; color: string; size: number; };
+type Stroke = { id: string; points: Point[]; color: string; size: number; mode: 'brush' | 'eraser' };
+
+export interface DrawingCanvasProps {
+  color: string;
+  brushSize: number;
+  mode?: 'brush' | 'eraser';
+  onStroke?: (stroke: Stroke) => void;
+  onFrame?: (dataUrl: string) => void;
+  rasterFps?: number;
+  targetSize?: number; // lado del PNG enviado
+}
+
+function getDpr() {
+  return Math.min(window.devicePixelRatio || 1, 2);
+}
+
+const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(function DrawingCanvas(
+  { color, brushSize, mode = 'brush', onStroke, onFrame, rasterFps = 6, targetSize = 512 },
+  ref
+) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const offscreenRef = useRef<HTMLCanvasElement | null>(null);
-  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const history = useHistory<HTMLCanvasElement>();
 
-  // Estado runtime
-  const drawingRef = useRef(false);
-  const lastPtRef = useRef<Point | null>(null);
-  const currentStrokeRef = useRef<Point[]>([]);
-  const colorRef = useRef(color);
-  const sizeRef = useRef(brushSize);
-  const modeRef = useRef<Mode>(mode);
+  const strokeRef = useRef<Stroke | null>(null);
+  const ctx = useMemo(() => canvasRef.current?.getContext('2d') ?? null, [canvasRef.current]);
 
-  // Historial con límite para evitar problemas de memoria
-  const MAX_HISTORY_LENGTH = 50; // Limitar número de trazos en historial
-  const historyRef = useRef<Stroke[]>([]);
-  const redoRef = useRef<Stroke[]>([]);
-
-  // Throttle de snapshots
-  const lastFrameTimeRef = useRef(0);
-  const rafRef = useRef<number | null>(null);
-
-  useImperativeHandle(ref, () => ({
-    clear() {
-      const c = canvasRef.current, ctx = ctxRef.current;
-      if (!c || !ctx) return;
-      historyRef.current = [];
-      redoRef.current = [];
-      ctx.clearRect(0, 0, c.width, c.height);
-      return makeSnapshot();
-    },
-    snapshot() { return makeSnapshot(); },
-    setColor(hex: string) { colorRef.current = hex; },
-    setBrushSize(v: number) { sizeRef.current = v; },
-    undo() {
-      const c = canvasRef.current, ctx = ctxRef.current;
-      if (!c || !ctx || historyRef.current.length === 0) return;
-      const s = historyRef.current.pop()!;
-      redoRef.current.push(s);
-      redrawAll();
-      return makeSnapshot();
-    },
-    redo() {
-      const c = canvasRef.current, ctx = ctxRef.current;
-      if (!c || !ctx || redoRef.current.length === 0) return;
-      const s = redoRef.current.pop()!;
-      historyRef.current.push(s);
-      redrawAll();
-      return makeSnapshot();
-    },
-  }));
-
-  // Ajuste a tamaño visible (rellena el contenedor)
-  useLayoutEffect(() => {
+  // Resize + DPR
+  const resize = useCallback(() => {
     const c = canvasRef.current!;
-    
-    // Variables para throttling
-    let resizeTimeoutId: number | null = null;
-    let lastResizeTime = 0;
-    const RESIZE_THROTTLE = 250; // ms de espera entre redibujados durante resize
-    const MAX_CANVAS_DIM = 1500; // límite máximo para dimensiones del canvas
-
-    const handleResize = () => {
-      // Actualizar referencias de posicionamiento para getPoint
-      updatePositioningRefs();
-      
-      const rect = rectRef.current!;
-      const dpr = dprRef.current;
-      
-      // Limitar dimensiones para evitar exceso de memoria
-      const w = Math.min(MAX_CANVAS_DIM, Math.max(1, Math.round(rect.width * dpr)));
-      const h = Math.min(MAX_CANVAS_DIM, Math.max(1, Math.round(rect.height * dpr)));
-      
-      if (c.width !== w || c.height !== h) {
-        c.width = w;
-        c.height = h;
-        const ctx = c.getContext("2d", { desynchronized: true });
-        if (ctx) {
-          ctxRef.current = ctx;
-          ctx.lineJoin = "round";
-          ctx.lineCap = "round";
-          ctx.imageSmoothingEnabled = true;
-        }
-        // re-pintar historial tras resize
-        redrawAll();
-        if (onFrame) {
-          const d = makeSnapshot();
-          if (d) onFrame(d);
-        }
-      }
-    };
-
-    const ro = new ResizeObserver(() => {
-      // Si estamos dibujando, postponer el resize para no interrumpir
-      if (drawingRef.current) return;
-      
-      const now = performance.now();
-      
-      // Si ha pasado muy poco tiempo desde el último resize, throttle
-      if (now - lastResizeTime < RESIZE_THROTTLE) {
-        // Cancelar timeout previo si existe
-        if (resizeTimeoutId !== null) {
-          window.clearTimeout(resizeTimeoutId);
-        }
-        
-        // Programar un resize después del throttle
-        resizeTimeoutId = window.setTimeout(() => {
-          lastResizeTime = performance.now();
-          handleResize();
-          resizeTimeoutId = null;
-        }, RESIZE_THROTTLE);
-        return;
-      }
-      
-      // Si ha pasado suficiente tiempo, ejecutar inmediatamente
-      lastResizeTime = now;
-      handleResize();
-    });
-    
-    ro.observe(c);
-    return () => {
-      if (resizeTimeoutId !== null) {
-        window.clearTimeout(resizeTimeoutId);
-      }
-      ro.disconnect();
-    };
-  }, [onFrame]);
-
-  // Sincroniza props → refs
-  useEffect(() => { colorRef.current = color; }, [color]);
-  useEffect(() => { sizeRef.current = brushSize; }, [brushSize]);
-  useEffect(() => { modeRef.current = mode; }, [mode]);
-
-  // Optimización de cálculo de coordenadas
-  const rectRef = useRef<DOMRect | null>(null);
-  const dprRef = useRef<number>(1);
-  
-  // Función que actualiza los valores de rectRef y dprRef (llamada en pointerdown y en resize)
-  const updatePositioningRefs = useCallback(() => {
-    const c = canvasRef.current;
-    if (c) {
-      rectRef.current = c.getBoundingClientRect();
-      dprRef.current = Math.max(1, window.devicePixelRatio || 1);
-    }
-  }, []);
-  
-  // Versión optimizada de getPoint que usa valores en cache para evitar recalcular en cada move
-  const getPoint = useCallback((e: PointerEvent): Point => {
-    if (!rectRef.current) {
-      updatePositioningRefs();
-    }
-    const r = rectRef.current!;
-    const dpr = dprRef.current;
-    return { x: (e.clientX - r.left) * dpr, y: (e.clientY - r.top) * dpr, t: performance.now() };
-  }, [updatePositioningRefs]);
-
-  const drawSeg = useCallback((a: Point, b: Point, stroke: Stroke | null = null) => {
-    const ctx = ctxRef.current;
-    if (!ctx) return;
-    const m = stroke ? stroke.mode : modeRef.current;
-    const col = stroke ? stroke.color : colorRef.current;
-    const w = stroke ? stroke.brushSize : sizeRef.current;
-    ctx.save();
-    ctx.globalCompositeOperation = (m === "eraser") ? "destination-out" : "source-over";
-    ctx.strokeStyle = col;
-    ctx.lineWidth = w * (window.devicePixelRatio || 1);
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-    ctx.stroke();
-    ctx.restore();
+    const dpr = getDpr();
+    const { clientWidth, clientHeight } = c.parentElement!;
+    c.style.width = `${clientWidth}px`;
+    c.style.height = `${clientHeight}px`;
+    c.width = Math.round(clientWidth * dpr);
+    c.height = Math.round(clientHeight * dpr);
+    const g = c.getContext('2d')!;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    redrawFromHistory();
   }, []);
 
-  const redrawAll = useCallback(() => {
-    const c = canvasRef.current, ctx = ctxRef.current;
-    if (!c || !ctx) return;
-    ctx.clearRect(0, 0, c.width, c.height);
-    const strokes = historyRef.current;
-    
-    // Usar requestAnimationFrame para mejorar rendimiento durante redibujado grande
-    if (strokes.length > 15) {
-      // Muchos trazos: usar técnica de batch para no bloquear el thread principal
-      let strokeIndex = 0;
-      
-      const drawBatch = () => {
-        const startTime = performance.now();
-        const BATCH_TIME_BUDGET = 8; // ms máximo por batch para mantener 60fps
-        
-        while (strokeIndex < strokes.length) {
-          const s = strokes[strokeIndex];
-          for (let i = 1; i < s.points.length; i++) {
-            drawSeg(s.points[i - 1], s.points[i], s);
-          }
-          
-          strokeIndex++;
-          
-          // Si excedimos el tiempo de presupuesto, pausamos y continuamos en el próximo frame
-          if (performance.now() - startTime > BATCH_TIME_BUDGET && strokeIndex < strokes.length) {
-            requestAnimationFrame(drawBatch);
-            return;
-          }
-        }
-      };
-      
-      drawBatch();
+  // Redraw all strokes from history snapshot
+  const redrawFromHistory = useCallback(() => {
+    const c = canvasRef.current!;
+    const g = c.getContext('2d')!;
+    g.clearRect(0, 0, c.width, c.height);
+    for (const s of history.getAll()) {
+      drawStroke(g, s);
+    }
+  }, [history]);
+
+  const drawStroke = (g: CanvasRenderingContext2D, s: Stroke) => {
+    if (s.points.length < 1) return;
+    g.save();
+    if (s.mode === 'eraser') {
+      g.globalCompositeOperation = 'destination-out';
     } else {
-      // Pocos trazos: dibujo inmediato tradicional
-      for (const s of strokes) {
-        for (let i = 1; i < s.points.length; i++) {
-          drawSeg(s.points[i - 1], s.points[i], s);
-        }
-      }
+      g.globalCompositeOperation = 'source-over';
     }
-  }, [drawSeg]);
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    g.strokeStyle = s.color;
+    g.lineWidth = s.size;
 
-  // Referencia para controlar throttling de snapshots durante rotación
-  const lastSnapshotTime = useRef(0);
-  const SNAPSHOT_THROTTLE = 500; // ms mínimo entre snapshots durante rotación
-  const isRotating = useRef(false);
-  const lastOrientationCheck = useRef(0);
-  
-  // Detector de cambio de orientación (vertical/horizontal)
-  useEffect(() => {
-    const checkOrientation = () => {
-      const now = performance.now();
-      // Limitar frecuencia de comprobación
-      if (now - lastOrientationCheck.current < 500) return;
-      lastOrientationCheck.current = now;
-      
-      // Si hay un cambio grande de tamaño, es probable que sea rotación
-      if (window.innerHeight !== window.screen.height 
-          && Math.abs(window.innerWidth/window.innerHeight - window.screen.width/window.screen.height) > 0.2) {
-        isRotating.current = true;
-        setTimeout(() => { isRotating.current = false; }, 2000); // considerar "rotando" por 2s
-      }
-    };
-    
-    window.addEventListener('resize', checkOrientation);
-    return () => window.removeEventListener('resize', checkOrientation);
-  }, []);
-
-  /** Snapshot EXACTO targetSize×targetSize con letterbox */
-  const makeSnapshot = (): string | undefined => {
-    const src = canvasRef.current;
-    if (!src) return;
-    
-    // Si estamos rotando, aplicar throttle extra a los snapshots
-    const now = performance.now();
-    if (isRotating.current && (now - lastSnapshotTime.current < SNAPSHOT_THROTTLE)) {
-      return undefined; // Skip snapshot durante rotación si hace poco que hicimos uno
-    }
-    lastSnapshotTime.current = now;
-
-    const T = Math.max(16, Math.round(targetSize)); // seguridad
-    const off = offscreenRef.current ?? (offscreenRef.current = document.createElement("canvas"));
-    if (off.width !== T || off.height !== T) { off.width = T; off.height = T; }
-    const octx = off.getContext("2d")!;
-    octx.clearRect(0, 0, T, T);
-
-    // Escalamos la imagen manteniendo aspecto y centramos (letterbox)
-    const sw = src.width, sh = src.height;
-    const scale = Math.min(T / sw, T / sh);
-    const dw = Math.round(sw * scale);
-    const dh = Math.round(sh * scale);
-    const dx = Math.floor((T - dw) / 2);
-    const dy = Math.floor((T - dh) / 2);
-
-    // Fondo opcional (negro). Si quieres transparencia, déjalo comentado.
-    // octx.fillStyle = "#000";
-    // octx.fillRect(0, 0, T, T);
-
-    octx.imageSmoothingEnabled = true;
-    octx.drawImage(src, 0, 0, sw, sh, dx, dy, dw, dh);
-
-    return off.toDataURL("image/png"); // PNG 512×512 exacto
+    g.beginPath();
+    const [p0, ...rest] = s.points;
+    g.moveTo(p0.x, p0.y);
+    for (const p of rest) g.lineTo(p.x, p.y);
+    g.stroke();
+    g.restore();
   };
 
-  // Input pointer
-  useEffect(() => {
+  // Pointer handlers
+  const start = useCallback((e: React.PointerEvent) => {
     const c = canvasRef.current!;
-    c.style.width = "100%";
-    c.style.height = "100%";
-    c.style.touchAction = "none";
-    c.style.background = "transparent";
+    const rect = c.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const s: Stroke = {
+      id: crypto.randomUUID(),
+      points: [{ x, y, p: 0.5, color, size: brushSize }],
+      color,
+      size: brushSize,
+      mode,
+    };
+    strokeRef.current = s;
+    setIsDrawing(true);
+  }, [color, brushSize, mode]);
 
-    const onDown = (ev: PointerEvent) => {
-      ev.preventDefault();
-      // Actualizar coordenadas al inicio para mejor precisión
-      updatePositioningRefs();
-      
-      drawingRef.current = true;
-      lastPtRef.current = getPoint(ev);
-      currentStrokeRef.current = [lastPtRef.current];
-      c.setPointerCapture(ev.pointerId);
-      // al empezar un nuevo trazo, invalidamos la rama de redo
-      redoRef.current = [];
-    };
-    
-    // Optimización de eventos de movimiento con debounce simple
-    let moveThrottled = false;
-    const MOVE_THROTTLE = 10; // ms entre puntos capturados (reduce cantidad de puntos)
-    
-    const onMove = (ev: PointerEvent) => {
-      if (!drawingRef.current) return;
-      
-      // Reducir frecuencia de captura en tablets lentos
-      if (moveThrottled) return;
-      moveThrottled = true;
-      setTimeout(() => { moveThrottled = false; }, MOVE_THROTTLE);
-      
-      const p = getPoint(ev);
-      const lp = lastPtRef.current;
-      if (lp) drawSeg(lp, p);
-      lastPtRef.current = p;
-      currentStrokeRef.current.push(p);
-    };
-    
-    const onUp = () => {
-      if (!drawingRef.current) return;
-      drawingRef.current = false;
-      const pts = [...currentStrokeRef.current];
-      currentStrokeRef.current = [];
-      lastPtRef.current = null;
-      if (pts.length > 0) {
-        const stroke: Stroke = { points: pts, color: colorRef.current, brushSize: sizeRef.current, mode: modeRef.current };
-        
-        // Limitar historial para evitar problemas de memoria en dispositivos con poca RAM
-        if (historyRef.current.length >= MAX_HISTORY_LENGTH) {
-          historyRef.current.shift(); // Eliminar el trazo más antiguo
-        }
-        
-        historyRef.current.push(stroke);
-        if (onStroke) onStroke(stroke);
-        if (onFrame) {
-          const d = makeSnapshot();
-          if (d) onFrame(d);
-        }
-      }
-    };
+  const move = useCallback((e: React.PointerEvent) => {
+    if (!isDrawing || !strokeRef.current) return;
+    const c = canvasRef.current!;
+    const rect = c.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const s = strokeRef.current;
+    s.points.push({ x, y, p: 0.5, color: s.color, size: s.size });
+    const g = c.getContext('2d')!;
+    drawStroke(g, { ...s, points: s.points.slice(-2) });
+  }, [isDrawing]);
 
-    c.addEventListener("pointerdown", onDown);
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    return () => {
-      c.removeEventListener("pointerdown", onDown);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
-  }, [drawSeg, getPoint, onStroke, onFrame, targetSize]);
+  const end = useCallback(() => {
+    if (!isDrawing || !strokeRef.current) return;
+    setIsDrawing(false);
+    history.push(strokeRef.current);
+    onStroke?.(strokeRef.current);
+    strokeRef.current = null;
+  }, [isDrawing, history, onStroke]);
 
-  // Snapshots periódicos mientras dibujas (throttle por FPS)
+  // Raster sender
   useEffect(() => {
     if (!onFrame) return;
-    const loop = () => {
-      rafRef.current = requestAnimationFrame(loop);
-      if (!drawingRef.current) return;
-      const now = performance.now();
-      const minDelta = 1000 / (rasterFps || 8);
-      if (now - lastFrameTimeRef.current < minDelta) return;
-      lastFrameTimeRef.current = now;
-      const d = makeSnapshot();
-      if (d) onFrame(d);
-    };
-    loop();
-    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+    const id = setInterval(() => {
+      const c = canvasRef.current!;
+      if (!c) return;
+      const off = document.createElement('canvas');
+      const side = targetSize;
+      off.width = side;
+      off.height = side;
+      const g = off.getContext('2d')!;
+      g.fillStyle = '#0b1220';
+      g.fillRect(0, 0, side, side);
+      g.drawImage(c, 0, 0, side, side);
+      onFrame(off.toDataURL('image/jpeg', 0.75));
+    }, Math.max(1000 / rasterFps, 60));
+    return () => clearInterval(id);
   }, [onFrame, rasterFps, targetSize]);
 
-  return <canvas ref={canvasRef} aria-label="Área de dibujo"></canvas>;
+  // Resize observer
+  useEffect(() => {
+    const obs = new ResizeObserver(resize);
+    if (canvasRef.current?.parentElement) obs.observe(canvasRef.current.parentElement);
+    resize();
+    return () => obs.disconnect();
+  }, [resize]);
+
+  useImperativeHandle(ref, () => ({
+    undo() {
+      history.undo();
+      redrawFromHistory();
+    },
+    redo() {
+      history.redo();
+      redrawFromHistory();
+    },
+    clear() {
+      history.clear();
+      redrawFromHistory();
+    },
+  }), [history, redrawFromHistory]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      onPointerDown={start}
+      onPointerMove={move}
+      onPointerUp={end}
+      onPointerLeave={end}
+      style={{ touchAction: 'none', display: 'block', width: '100%', height: '100%' }}
+    />
+  );
 });
 
-DrawingCanvas.displayName = "DrawingCanvas";
 export default DrawingCanvas;

@@ -1,63 +1,56 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useCallback } from "react";
 
-type Listener = (ev: MessageEvent) => void;
+type WSMsg =
+  | { type: "prompt"; payload: string }
+  | { type: "draw"; payload: string }
+  | { type: "ping" }
+  | { type: string; payload?: any };
 
-export default function useWebSocket(url: string) {
+const DEFAULT_URL =
+  (import.meta.env.VITE_WS_URL as string) ||
+  // si sirves la web desde Render/HTTPS construimos wss:
+  (location.protocol === "https:"
+    ? `wss://${location.host}`
+    : `ws://${location.hostname}:9980`);
+
+export function useWebSocket(onMessage?: (m: MessageEvent) => void, url = DEFAULT_URL) {
   const wsRef = useRef<WebSocket | null>(null);
-  const listenersRef = useRef<Set<Listener>>(new Set());
-  const [readyState, setReadyState] = useState<string>("CLOSED");
-  const retryRef = useRef<number>(0);
+  const pingTimer = useRef<number | null>(null);
+
+  const sendJson = useCallback((obj: WSMsg) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(obj));
+    }
+  }, []);
 
   useEffect(() => {
-    let closedByUser = false;
+    const ws = new WebSocket(url);
+    wsRef.current = ws;
 
-    const connect = () => {
-      const ws = new WebSocket(url);
-      wsRef.current = ws;
-      setReadyState("CONNECTING");
+    ws.addEventListener("open", () => {
+      // keep-alive (Render cierra por inactividad)
+      pingTimer.current = window.setInterval(() => {
+        try { ws.send(JSON.stringify({ type: "ping" })); } catch {}
+      }, 25000) as unknown as number;
+    });
 
-      ws.onopen = () => {
-        setReadyState("OPEN");
-        retryRef.current = 0;
-      };
+    if (onMessage) ws.addEventListener("message", onMessage);
 
-      ws.onmessage = (ev) => {
-        listenersRef.current.forEach((fn) => fn(ev));
-      };
+    ws.addEventListener("close", () => {
+      if (pingTimer.current) { clearInterval(pingTimer.current); pingTimer.current = null; }
+    });
 
-      ws.onclose = () => {
-        setReadyState("CLOSED");
-        if (!closedByUser) {
-          // backoff simple
-          const t = Math.min(1000 + retryRef.current * 500, 5000);
-          retryRef.current += 1;
-          setTimeout(connect, t);
-        }
-      };
+    ws.addEventListener("error", () => {
+      // no tiramos la app; solo dejamos que reintentes recargando
+    });
 
-      ws.onerror = () => {
-        setReadyState("ERROR");
-        ws.close();
-      };
-    };
-
-    connect();
     return () => {
-      closedByUser = true;
-      wsRef.current?.close();
+      if (pingTimer.current) { clearInterval(pingTimer.current); pingTimer.current = null; }
+      try { ws.close(); } catch {}
+      wsRef.current = null;
     };
-  }, [url]);
+  }, [url, onMessage]);
 
-  const onMessage = (fn: Listener) => {
-    listenersRef.current.add(fn);
-    return () => listenersRef.current.delete(fn);
-  };
-
-  const send = (obj: any) => {
-    const json = JSON.stringify(obj);
-    const ws = wsRef.current;
-    if (ws && ws.readyState === WebSocket.OPEN) ws.send(json);
-  };
-
-  return { onMessage, send, readyState };
+  return { sendJson };
 }

@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import Sidebar from "./components/Sidebar";
 import DrawingCanvas from "./components/DrawingCanvas";
-import ControlPanel from "./components/ControlPanel";
-import ColorPicker from "./components/ColorPicker";
 
-// --- Utils -------------------------------------------------------------
+// ----------------- utils -----------------
 function getQueryParam(names: string[], def = ""): string {
   const q = new URLSearchParams(window.location.search);
   for (const n of names) {
@@ -19,50 +18,41 @@ function buildWsUrl(room: string) {
     `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
   const url = new URL(base);
   url.searchParams.set("role", "canvas");
-  if (room) url.searchParams.set("room", room);
+  url.searchParams.set("room", room);
   return url.toString();
 }
 
-// Tipos del “bridge” que expone el canvas en window
 type CanvasAPI = {
-  mode: "draw" | "erase";
   setMode: (m: "draw" | "erase") => void;
+  getMode: () => "draw" | "erase";
   clearAll: () => void;
-  saveBefore: () => void;
-  setShowCompare: (b: boolean) => void;
-  revertBefore: () => void;
-  hasBefore: boolean;
+  undo: () => void;
+  redo: () => void;
+  setBrushSize: (n: number) => void;
+  getBrushSize: () => number;
 };
 
-// Helper para leer el bridge de forma segura
-function getCanvasAPI(): CanvasAPI | undefined {
-  // @ts-ignore
-  return (window as any).__RTC_CANVAS_API__ as CanvasAPI | undefined;
-}
-
-// --- Componente --------------------------------------------------------
 export default function App() {
-  const [color, setColor] = useState<string>("#ffcc00");
-  const [size, setSize] = useState<number>(6);
-
-  // Estado reflejado desde el canvas (para resaltar botones y deshabilitar)
-  const [mode, setModeState] = useState<"draw" | "erase">("draw");
-  const [hasBefore, setHasBefore] = useState<boolean>(false);
-
-  // Sincroniza cada ~200 ms con el bridge del canvas para mantener el UI al día
-  useEffect(() => {
-    const id = setInterval(() => {
-      const api = getCanvasAPI();
-      if (!api) return;
-      setModeState((prev) => (prev !== api.mode ? api.mode : prev));
-      setHasBefore((prev) => (prev !== api.hasBefore ? api.hasBefore : prev));
-    }, 200);
-    return () => clearInterval(id);
-  }, []);
-
-  // ROOM y URL del WS
   const room = useMemo(() => getQueryParam(["room", "r"], "room-default"), []);
   const wsUrl = useMemo(() => buildWsUrl(room), [room]);
+
+  const [color, setColor] = useState("#478792");
+  const [size, setSize] = useState(12);
+  const [mode, setMode] = useState<"draw" | "erase">("draw");
+  const [connected, setConnected] = useState(false);
+
+  // bridge del canvas
+  const [api, setApi] = useState<CanvasAPI | null>(null);
+
+  // sincroniza estado visible con lo que tenga el canvas
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!api) return;
+      setMode(api.getMode());
+      setSize(api.getBrushSize());
+    }, 250);
+    return () => clearInterval(id);
+  }, [api]);
 
   return (
     <div
@@ -70,45 +60,52 @@ export default function App() {
         height: "100dvh",
         width: "100vw",
         display: "grid",
-        gridTemplateRows: "auto 1fr auto",
-        background: "#0b0b0f",
-        color: "#eaeaea",
+        gridTemplateColumns: "320px 1fr",
+        background: "#0b0e12",
+        color: "#e9eef3",
       }}
     >
-      <header style={{ padding: "8px 12px", borderBottom: "1px solid #1f1f26" }}>
-        <strong>Real-Time Canvas</strong> — room: <code>{room}</code>
-      </header>
+      {/* Sidebar izquierda */}
+      <Sidebar
+        room={room}
+        connected={connected}
+        color={color}
+        onColor={setColor}
+        brushSize={size}
+        onBrushSize={(n) => {
+          setSize(n);
+          api?.setBrushSize(n);
+        }}
+        mode={mode}
+        onMode={(m) => {
+          setMode(m);
+          api?.setMode(m);
+        }}
+        onClear={() => api?.clearAll()}
+        onUndo={() => api?.undo()}
+        onRedo={() => api?.redo()}
+        onSendPrompt={(text) => {
+          // Broadcast prompt por WS (consumirás en Touch)
+          (window as any).__RTC_SEND__?.({
+            t: "prompt",
+            room,
+            text,
+          });
+        }}
+        onColorsFromImage={(hexes) => {
+          // al tocar un color en Sidebar, setColor ya lo manejará
+          // pero si quieres autoseleccionar el 1º:
+          if (hexes[0]) setColor(hexes[0]);
+        }}
+      />
 
-      <main style={{ position: "relative", overflow: "hidden" }}>
-        <DrawingCanvas color={color} size={size} wsUrl={wsUrl} room={room} />
-      </main>
-
-      <footer
+      {/* Área de lienzo */}
+      <div
         style={{
-          padding: "10px 12px",
-          borderTop: "1px solid #1f1f26",
           display: "grid",
-          gap: 8,
-          gridTemplateColumns: "1fr auto",
-          alignItems: "center",
+          placeItems: "center",
+          padding: 16,
         }}
       >
-        {/* Selector de color */}
-        <ColorPicker value={color} onChange={setColor} />
-
-        {/* Panel de controles con Erase + Before/After */}
-        <ControlPanel
-          size={size}
-          onSizeChange={setSize}
-          mode={mode}
-          onModeChange={(m) => getCanvasAPI()?.setMode(m)}
-          onClear={() => getCanvasAPI()?.clearAll()}
-          onSaveBefore={() => getCanvasAPI()?.saveBefore()}
-          onToggleCompare={(b) => getCanvasAPI()?.setShowCompare(b)}
-          onRevertBefore={() => getCanvasAPI()?.revertBefore()}
-          hasBefore={hasBefore}
-        />
-      </footer>
-    </div>
-  );
-}
+        <DrawingCanvas
+          wsUrl={wsUrl}

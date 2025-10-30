@@ -1,133 +1,144 @@
-import React, {
-  useRef, useEffect, useLayoutEffect, useCallback,
-  forwardRef, useImperativeHandle
-} from "react";
-type Point = { x: number; y: number; t?: number };
-type Mode = "brush" | "eraser";
-type Stroke = { points: Point[]; color: string; brushSize: number; mode: Mode };
+import { useEffect, useRef, useState } from "react";
+import useWebSocket from "../hooks/useWebSocket";
 
-export type DrawingCanvasProps = {
-  /** El canvas rellena su contenedor. Dale tamaño al wrapper (en App.tsx lo ponemos 512×512). */
-  color?: string;
-  brushSize?: number;
-  mode?: Mode;
-
-  onStroke?: (stroke: Stroke) => void;
-  onFrame?: (dataUrl: string) => void;   // PNG
-
-  /** FPS de snapshots mientras dibujas */
-  rasterFps?: number;
-
-  /** Tamaño cuadrado forzado del snapshot (por defecto 512 → 512×512) */
-  targetSize?: number;
+type Props = {
+  color: string;
+  size: number;
+  wsUrl: string;
+  room: string;
 };
 
-export type DrawingCanvasRef = {
-  clear: () => string | undefined;       // limpia y devuelve snapshot (PNG)
-  snapshot: () => string | undefined;    // snapshot actual (PNG)
-  setColor: (hex: string) => void;
-  setBrushSize: (v: number) => void;
-  undo: () => string | undefined;        // devuelve dataURL para enviar a TD
-  redo: () => string | undefined;        // idem
+type DrawMsg = {
+  t: "draw";
+  room: string;
+  x: number;
+  y: number;
+  drag: boolean; // arrastrando (continúa trazo)
+  color: string;
+  size: number;
 };
 
-const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
-	@@ - 33, 14 + 38, 14 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
-  mode = "brush",
-  onStroke,
-  onFrame,
-  rasterFps = 8,
-  targetSize = 512,
-}, ref) => {
+export default function DrawingCanvas({ color, size, wsUrl, room }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const offscreenRef = useRef<HTMLCanvasElement | null>(null);
-  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const [isDown, setIsDown] = useState(false);
+  const [lastPt, setLastPt] = useState<{ x: number; y: number } | null>(null);
 
-  // Estado runtime
-  const drawingRef = useRef(false);
-  const lastPtRef = useRef<Point | null>(null);
-  const currentStrokeRef = useRef<Point[]>([]);
-  @@ -52, 7 + 57, 7 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
-    const historyRef = useRef<Stroke[]>([]);
-    const redoRef = useRef<Stroke[]>([]);
+  const { send, onMessage, readyState } = useWebSocket(wsUrl);
 
-    // Throttle de snapshots
-    const lastFrameTimeRef = useRef(0);
-    const rafRef = useRef<number | null>(null);
-
-	@@ - 104, 7 + 109, 7 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
-      ctx.lineCap = "round";
-      ctx.imageSmoothingEnabled = true;
-    }
-        // re-pintar historial tras resize
-        redrawAll();
-  if (onFrame) {
-    const d = makeSnapshot();
-    @@ -137, 7 + 142, 7 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
-      ctx.save();
-      ctx.globalCompositeOperation = (m === "eraser") ? "destination-out" : "source-over";
-      ctx.strokeStyle = col;
-      ctx.lineWidth = w * (window.devicePixelRatio || 1);
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-	@@ - 157, 21 + 162, 33 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
-      }
-  }, [drawSeg]);
-
-/** Snapshot EXACTO targetSize×targetSize con letterbox */
-const makeSnapshot = (): string | undefined => {
-  const src = canvasRef.current;
-  if (!src) return;
-
-  const T = Math.max(16, Math.round(targetSize)); // seguridad
-  const off = offscreenRef.current ?? (offscreenRef.current = document.createElement("canvas"));
-  if (off.width !== T || off.height !== T) { off.width = T; off.height = T; }
-  const octx = off.getContext("2d")!;
-  octx.clearRect(0, 0, T, T);
-
-  // Escalamos la imagen manteniendo aspecto y centramos (letterbox)
-  const sw = src.width, sh = src.height;
-  const scale = Math.min(T / sw, T / sh);
-  const dw = Math.round(sw * scale);
-  const dh = Math.round(sh * scale);
-  const dx = Math.floor((T - dw) / 2);
-  const dy = Math.floor((T - dh) / 2);
-
-  // Fondo opcional (negro). Si quieres transparencia, déjalo comentado.
-  // octx.fillStyle = "#000";
-  // octx.fillRect(0, 0, T, T);
-
-  octx.imageSmoothingEnabled = true;
-  octx.drawImage(src, 0, 0, sw, sh, dx, dy, dw, dh);
-
-  return off.toDataURL("image/png"); // PNG 512×512 exacto
-};
-
-// Input pointer
-@@ -188, 7 + 205, 7 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
-  lastPtRef.current = getPoint(ev);
-  currentStrokeRef.current = [lastPtRef.current];
-  c.setPointerCapture(ev.pointerId);
-  // al empezar un nuevo trazo, invalidamos la rama de redo
-  redoRef.current = [];
-};
-const onMove = (ev: PointerEvent) => {
-  @@ -224, 9 + 241, 9 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
-    window.removeEventListener("pointermove", onMove);
-    window.removeEventListener("pointerup", onUp);
+  // Resize físico según DPR y contenedor
+  const resizeCanvas = () => {
+    const cvs = canvasRef.current!;
+    const wrap = wrapperRef.current!;
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const w = wrap.clientWidth;
+    const h = wrap.clientHeight;
+    cvs.width = Math.max(1, Math.floor(w * dpr));
+    cvs.height = Math.max(1, Math.floor(h * dpr));
+    cvs.style.width = `${w}px`;
+    cvs.style.height = `${h}px`;
+    const ctx = cvs.getContext("2d")!;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   };
-}, [drawSeg, getPoint, onStroke, onFrame, targetSize]);
 
-// Snapshots periódicos mientras dibujas (throttle por FPS)
-useEffect(() => {
-  if (!onFrame) return;
-  const loop = () => {
-    @@ -241, 7 + 258, 7 @@ const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
+  useEffect(() => {
+    resizeCanvas();
+    const obs = new ResizeObserver(resizeCanvas);
+    if (wrapperRef.current) obs.observe(wrapperRef.current);
+    window.addEventListener("orientationchange", resizeCanvas);
+    return () => {
+      obs.disconnect();
+      window.removeEventListener("orientationchange", resizeCanvas);
     };
-    loop();
-    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [onFrame, rasterFps, targetSize]);
+  }, []);
 
-return <canvas ref={canvasRef} aria-label="Área de dibujo" />;
-});
+  // Dibujo local
+  const drawLine = (from: { x: number; y: number }, to: { x: number; y: number }, c: string, s: number) => {
+    const cvs = canvasRef.current!;
+    const ctx = cvs.getContext("2d")!;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = c;
+    ctx.lineWidth = s;
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+  };
+
+  // Entrada de otros clientes
+  useEffect(() => {
+    return onMessage((raw) => {
+      try {
+        const msg: DrawMsg = JSON.parse(raw.data);
+        if (msg.t !== "draw" || msg.room !== room) return;
+        const cvs = canvasRef.current!;
+        const rect = cvs.getBoundingClientRect();
+        drawLine(
+          { x: msg.x * rect.width, y: msg.y * rect.height },
+          { x: msg.x * rect.width, y: msg.y * rect.height }, // punto -> pequeño segmento
+          msg.color,
+          msg.size
+        );
+      } catch {}
+    });
+  }, [onMessage, room]);
+
+  // Normaliza coords 0..1 para enviar poco dato
+  const norm = (ev: MouseEvent | TouchEvent) => {
+    const cvs = canvasRef.current!;
+    const rect = cvs.getBoundingClientRect();
+    const pt = "touches" in ev ? ev.touches[0] : (ev as MouseEvent);
+    const x = (pt.clientX - rect.left) / rect.width;
+    const y = (pt.clientY - rect.top) / rect.height;
+    return { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) };
+  };
+
+  const handleDown = (ev: React.MouseEvent | React.TouchEvent) => {
+    ev.preventDefault();
+    setIsDown(true);
+    const p = norm(ev.nativeEvent as any);
+    setLastPt({ x: p.x, y: p.y });
+    send({ t: "draw", room, ...p, drag: false, color, size });
+  };
+
+  const handleMove = (ev: React.MouseEvent | React.TouchEvent) => {
+    if (!isDown) return;
+    const p = norm(ev.nativeEvent as any);
+    if (lastPt) {
+      // dibuja localmente para respuesta inmediata
+      const cvs = canvasRef.current!;
+      const rect = cvs.getBoundingClientRect();
+      drawLine(
+        { x: lastPt.x * rect.width, y: lastPt.y * rect.height },
+        { x: p.x * rect.width, y: p.y * rect.height },
+        color,
+        size
+      );
+    }
+    setLastPt(p);
+    send({ t: "draw", room, ...p, drag: true, color, size });
+  };
+
+  const handleUp = () => {
+    setIsDown(false);
+    setLastPt(null);
+  };
+
+  return (
+    <div ref={wrapperRef} style={{ width: "100%", height: "100%" }}>
+      <canvas
+        ref={canvasRef}
+        onMouseDown={handleDown}
+        onMouseMove={handleMove}
+        onMouseUp={handleUp}
+        onMouseLeave={handleUp}
+        onTouchStart={handleDown}
+        onTouchMove={handleMove}
+        onTouchEnd={handleUp}
+        style={{ display: "block", touchAction: "none", background: "#0e0e14" }}
+        aria-label={`canvas ${room} (${readyState})`}
+      />
+    </div>
+  );
+}

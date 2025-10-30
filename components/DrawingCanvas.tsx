@@ -1,267 +1,247 @@
-import React, {
-  useRef, useEffect, useLayoutEffect, useCallback,
-  forwardRef, useImperativeHandle
-} from "react";
+import { useEffect, useRef } from "react";
+import useWebSocket from "../hooks/useWebSocket";
 
-type Point = { x: number; y: number; t?: number };
-type Mode = "brush" | "eraser";
-type Stroke = { points: Point[]; color: string; brushSize: number; mode: Mode };
-
-export type DrawingCanvasProps = {
-  /** El canvas rellena su contenedor. Dale tamaño al wrapper (en App.tsx lo ponemos 512×512). */
-  color?: string;
-  brushSize?: number;
-  mode?: Mode;
-
-  onStroke?: (stroke: Stroke) => void;
-  onFrame?: (dataUrl: string) => void;   // PNG
-
-  /** FPS de snapshots mientras dibujas */
-  rasterFps?: number;
-
-  /** Tamaño cuadrado forzado del snapshot (por defecto 512 → 512×512) */
-  targetSize?: number;
+type Props = {
+  wsUrl: string;
+  room: string;
+  color: string;
+  size: number;
+  mode: "draw" | "erase";
+  onApiReady: (api: any) => void;
+  onConnectionChange?: (isOpen: boolean) => void;
 };
 
-export type DrawingCanvasRef = {
-  clear: () => string | undefined;       // limpia y devuelve snapshot (PNG)
-  snapshot: () => string | undefined;    // snapshot actual (PNG)
-  setColor: (hex: string) => void;
-  setBrushSize: (v: number) => void;
-  undo: () => string | undefined;        // devuelve dataURL para enviar a TD
-  redo: () => string | undefined;        // idem
+type DrawMsg = {
+  t: "draw";
+  room: string;
+  x0: number; y0: number; // normalizados 0..1
+  x1: number; y1: number; // normalizados 0..1
+  color: string;
+  size: number;
+  mode: "draw" | "erase";
 };
 
-const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
-  color = "#ff4d4d",
-  brushSize = 16,
-  mode = "brush",
-  onStroke,
-  onFrame,
-  rasterFps = 8,
-  targetSize = 512,
-}, ref) => {
+export default function DrawingCanvas({
+  wsUrl, room, color, size, mode, onApiReady, onConnectionChange
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const offscreenRef = useRef<HTMLCanvasElement | null>(null);
-  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
 
-  // Estado runtime
-  const drawingRef = useRef(false);
-  const lastPtRef = useRef<Point | null>(null);
-  const currentStrokeRef = useRef<Point[]>([]);
-  const colorRef = useRef(color);
-  const sizeRef = useRef(brushSize);
-  const modeRef = useRef<Mode>(mode);
+  const undoStack = useRef<ImageData[]>([]);
+  const redoStack = useRef<ImageData[]>([]);
 
-  // Historial
-  const historyRef = useRef<Stroke[]>([]);
-  const redoRef = useRef<Stroke[]>([]);
+  const { send, onMessage, readyState } = useWebSocket(wsUrl);
 
-  // Throttle de snapshots
-  const lastFrameTimeRef = useRef(0);
-  const rafRef = useRef<number | null>(null);
+  // expose sender for App/Sidebar (prompts, etc)
+  useEffect(() => {
+    (window as any).__RTC_SEND__ = (o: any) => send(o);
+  }, [send]);
 
-  useImperativeHandle(ref, () => ({
-    clear() {
-      const c = canvasRef.current, ctx = ctxRef.current;
-      if (!c || !ctx) return;
-      historyRef.current = [];
-      redoRef.current = [];
-      ctx.clearRect(0, 0, c.width, c.height);
-      return makeSnapshot();
-    },
-    snapshot() { return makeSnapshot(); },
-    setColor(hex: string) { colorRef.current = hex; },
-    setBrushSize(v: number) { sizeRef.current = v; },
-    undo() {
-      const c = canvasRef.current, ctx = ctxRef.current;
-      if (!c || !ctx || historyRef.current.length === 0) return;
-      const s = historyRef.current.pop()!;
-      redoRef.current.push(s);
-      redrawAll();
-      return makeSnapshot();
-    },
-    redo() {
-      const c = canvasRef.current, ctx = ctxRef.current;
-      if (!c || !ctx || redoRef.current.length === 0) return;
-      const s = redoRef.current.pop()!;
-      historyRef.current.push(s);
-      redrawAll();
-      return makeSnapshot();
-    },
-  }));
+  // API para App/Sidebar
+  useEffect(() => {
+    const api = {
+      setMode: (m: "draw" | "erase") => { current.mode = m; },
+      getMode: () => current.mode,
+      clearAll: () => clearAll(),
+      undo: () => undo(),
+      redo: () => redo(),
+      setBrushSize: (n: number) => { current.size = n; },
+      getBrushSize: () => current.size,
+    };
+    onApiReady(api);
+  }, [onApiReady]);
 
-  // Ajuste a tamaño visible (rellena el contenedor)
-  useLayoutEffect(() => {
-    const c = canvasRef.current!;
-    const ro = new ResizeObserver(() => {
-      const rect = c.getBoundingClientRect();
-      const dpr = Math.max(1, window.devicePixelRatio || 1);
-      const w = Math.max(1, Math.round(rect.width * dpr));
-      const h = Math.max(1, Math.round(rect.height * dpr));
-      if (c.width !== w || c.height !== h) {
-        c.width = w;
-        c.height = h;
-        const ctx = c.getContext("2d", { desynchronized: true });
-        if (ctx) {
-          ctxRef.current = ctx;
-          ctx.lineJoin = "round";
-          ctx.lineCap = "round";
-          ctx.imageSmoothingEnabled = true;
-        }
-        // re-pintar historial tras resize
-        redrawAll();
-        if (onFrame) {
-          const d = makeSnapshot();
-          if (d) onFrame(d);
-        }
-      }
-    });
-    ro.observe(c);
-    return () => ro.disconnect();
-  }, [onFrame]);
+  const current = useRef({ color, size, mode });
+  useEffect(() => { current.current = { color, size, mode }; }, [color, size, mode]);
 
-  // Sincroniza props → refs
-  useEffect(() => { colorRef.current = color; }, [color]);
-  useEffect(() => { sizeRef.current = brushSize; }, [brushSize]);
-  useEffect(() => { modeRef.current = mode; }, [mode]);
+  useEffect(() => {
+    onConnectionChange?.(readyState === "OPEN");
+  }, [readyState, onConnectionChange]);
 
-  const getPoint = useCallback((e: PointerEvent): Point => {
-    const c = canvasRef.current!;
-    const r = c.getBoundingClientRect();
+  // Buffer 512x512 (con DPR)
+  useEffect(() => {
+    const cvs = canvasRef.current!;
     const dpr = Math.max(1, window.devicePixelRatio || 1);
-    return { x: (e.clientX - r.left) * dpr, y: (e.clientY - r.top) * dpr, t: performance.now() };
+    const W = 512, H = 512;
+    cvs.width = Math.floor(W * dpr);
+    cvs.height = Math.floor(H * dpr);
+    cvs.style.width = `${W}px`;
+    cvs.style.height = `${H}px`;
+    const ctx = cvs.getContext("2d")!;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    pushUndo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const drawSeg = useCallback((a: Point, b: Point, stroke: Stroke | null = null) => {
-    const ctx = ctxRef.current;
-    if (!ctx) return;
-    const m = stroke ? stroke.mode : modeRef.current;
-    const col = stroke ? stroke.color : colorRef.current;
-    const w = stroke ? stroke.brushSize : sizeRef.current;
-    ctx.save();
-    ctx.globalCompositeOperation = (m === "eraser") ? "destination-out" : "source-over";
-    ctx.strokeStyle = col;
-    ctx.lineWidth = w * (window.devicePixelRatio || 1);
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-    ctx.stroke();
-    ctx.restore();
-  }, []);
+  // ======= TouchDesigner snapshots =======
+  const lastSnap = useRef<number>(0);
+  const SNAP_MS = 200; // limita cada 200ms
 
-  const redrawAll = useCallback(() => {
-    const c = canvasRef.current, ctx = ctxRef.current;
-    if (!c || !ctx) return;
-    ctx.clearRect(0, 0, c.width, c.height);
-    const strokes = historyRef.current;
-    for (const s of strokes) {
-      for (let i = 1; i < s.points.length; i++) {
-        drawSeg(s.points[i - 1], s.points[i], s);
-      }
-    }
-  }, [drawSeg]);
-
-  /** Snapshot EXACTO targetSize×targetSize con letterbox */
-  const makeSnapshot = (): string | undefined => {
-    const src = canvasRef.current;
-    if (!src) return;
-
-    const T = Math.max(16, Math.round(targetSize)); // seguridad
-    const off = offscreenRef.current ?? (offscreenRef.current = document.createElement("canvas"));
-    if (off.width !== T || off.height !== T) { off.width = T; off.height = T; }
-    const octx = off.getContext("2d")!;
-    octx.clearRect(0, 0, T, T);
-
-    // Escalamos la imagen manteniendo aspecto y centramos (letterbox)
-    const sw = src.width, sh = src.height;
-    const scale = Math.min(T / sw, T / sh);
-    const dw = Math.round(sw * scale);
-    const dh = Math.round(sh * scale);
-    const dx = Math.floor((T - dw) / 2);
-    const dy = Math.floor((T - dh) / 2);
-
-    // Fondo opcional (negro). Si quieres transparencia, déjalo comentado.
-    // octx.fillStyle = "#000";
-    // octx.fillRect(0, 0, T, T);
-
-    octx.imageSmoothingEnabled = true;
-    octx.drawImage(src, 0, 0, sw, sh, dx, dy, dw, dh);
-
-    return off.toDataURL("image/png"); // PNG 512×512 exacto
+  const sendSnapshot = () => {
+    const now = performance.now();
+    if (now - lastSnap.current < SNAP_MS) return;
+    lastSnap.current = now;
+    try {
+      const dataUrl = canvasRef.current!.toDataURL("image/png");
+      // Mensaje que espera TouchDesigner
+      send({ type: "draw", payload: dataUrl });
+    } catch { /* ignore */ }
   };
 
-  // Input pointer
+  // ======= Recepción WS de otros clientes (trazos normalizados) =======
   useEffect(() => {
-    const c = canvasRef.current!;
-    c.style.width = "100%";
-    c.style.height = "100%";
-    c.style.touchAction = "none";
-    c.style.background = "transparent";
+    return onMessage((raw) => {
+      try {
+        const msg = JSON.parse(raw.data) as DrawMsg | any;
+        if (msg.t !== "draw" || msg.room !== room) return;
+        // convierte a píxeles (buffer 512x512)
+        drawSegment(
+          { x: msg.x0 * 512, y: msg.y0 * 512 },
+          { x: msg.x1 * 512, y: msg.y1 * 512 },
+          msg.color, msg.size, msg.mode
+        );
+      } catch {}
+    });
+  }, [onMessage, room]);
 
-    const onDown = (ev: PointerEvent) => {
-      ev.preventDefault();
-      drawingRef.current = true;
-      lastPtRef.current = getPoint(ev);
-      currentStrokeRef.current = [lastPtRef.current];
-      c.setPointerCapture(ev.pointerId);
-      // al empezar un nuevo trazo, invalidamos la rama de redo
-      redoRef.current = [];
-    };
-    const onMove = (ev: PointerEvent) => {
-      if (!drawingRef.current) return;
-      const p = getPoint(ev);
-      const lp = lastPtRef.current;
-      if (lp) drawSeg(lp, p);
-      lastPtRef.current = p;
-      currentStrokeRef.current.push(p);
-    };
-    const onUp = () => {
-      if (!drawingRef.current) return;
-      drawingRef.current = false;
-      const pts = [...currentStrokeRef.current];
-      currentStrokeRef.current = [];
-      lastPtRef.current = null;
-      if (pts.length > 0) {
-        const stroke: Stroke = { points: pts, color: colorRef.current, brushSize: sizeRef.current, mode: modeRef.current };
-        historyRef.current.push(stroke);
-        if (onStroke) onStroke(stroke);
-        if (onFrame) {
-          const d = makeSnapshot();
-          if (d) onFrame(d);
-        }
-      }
-    };
+  // ======= Helpers =======
+  const getCtx = () => canvasRef.current!.getContext("2d")!;
 
-    c.addEventListener("pointerdown", onDown);
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    return () => {
-      c.removeEventListener("pointerdown", onDown);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
-  }, [drawSeg, getPoint, onStroke, onFrame, targetSize]);
+  const drawSegment = (
+    from: {x:number;y:number},
+    to: {x:number;y:number},
+    col: string, sz: number, md: "draw"|"erase"
+  ) => {
+    const ctx = getCtx();
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = sz;
+    if (md === "erase") {
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.strokeStyle = "rgba(0,0,0,1)";
+    } else {
+      ctx.globalCompositeOperation = "source-over";
+      ctx.strokeStyle = col;
+    }
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+    ctx.restore();
+  };
 
-  // Snapshots periódicos mientras dibujas (throttle por FPS)
-  useEffect(() => {
-    if (!onFrame) return;
-    const loop = () => {
-      rafRef.current = requestAnimationFrame(loop);
-      if (!drawingRef.current) return;
-      const now = performance.now();
-      const minDelta = 1000 / (rasterFps || 8);
-      if (now - lastFrameTimeRef.current < minDelta) return;
-      lastFrameTimeRef.current = now;
-      const d = makeSnapshot();
-      if (d) onFrame(d);
-    };
-    loop();
-    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [onFrame, rasterFps, targetSize]);
+  // ======= Input local =======
+  const last = useRef<{x:number;y:number}|null>(null);
+  const toLocal = (ev: MouseEvent | TouchEvent) => {
+    const cvs = canvasRef.current!;
+    const rect = cvs.getBoundingClientRect();
+    const pt = "touches" in ev ? ev.touches[0] : (ev as MouseEvent);
+    return { x: (pt.clientX - rect.left), y: (pt.clientY - rect.top) };
+  };
 
-  return <canvas ref={canvasRef} aria-label="Área de dibujo" />;
-});
+  const mdown = (e: React.MouseEvent|React.TouchEvent) => {
+    e.preventDefault();
+    last.current = toLocal(e.nativeEvent as any);
+  };
 
-DrawingCanvas.displayName = "DrawingCanvas";
-export default DrawingCanvas;
+  const mmove = (e: React.MouseEvent|React.TouchEvent) => {
+    if (!last.current) return;
+    const p = toLocal(e.nativeEvent as any);
+
+    // dibuja local
+    drawSegment(last.current, p, current.current.color, current.current.size, current.current.mode);
+
+    // broadcast normalizado para otros clientes web
+    const x0 = last.current.x/512, y0 = last.current.y/512;
+    const x1 = p.x/512, y1 = p.y/512;
+    send({
+      t: "draw", room,
+      x0, y0, x1, y1,
+      color: current.current.color,
+      size: current.current.size,
+      mode: current.current.mode
+    });
+
+    // snapshot para TouchDesigner
+    sendSnapshot();
+
+    last.current = p;
+  };
+
+  const mup = () => {
+    if (last.current) pushUndo();
+    last.current = null;
+    // snapshot final del trazo para TD
+    sendSnapshot();
+  };
+
+  // ======= Historial =======
+  const pushUndo = () => {
+    const ctx = getCtx();
+    const img = ctx.getImageData(0, 0, 512, 512);
+    undoStack.current.push(img);
+    if (undoStack.current.length > 50) undoStack.current.shift();
+    redoStack.current = [];
+  };
+  const undo = () => {
+    if (undoStack.current.length <= 1) return;
+    const ctx = getCtx();
+    const last = undoStack.current.pop()!;
+    redoStack.current.push(last);
+    const prev = undoStack.current[undoStack.current.length - 1];
+    ctx.putImageData(prev, 0, 0);
+  };
+  const redo = () => {
+    if (!redoStack.current.length) return;
+    const ctx = getCtx();
+    const img = redoStack.current.pop()!;
+    ctx.putImageData(img, 0, 0);
+    undoStack.current.push(img);
+  };
+  const clearAll = () => {
+    const ctx = getCtx();
+    ctx.clearRect(0, 0, 512, 512);
+    pushUndo();
+    sendSnapshot(); // refleja limpieza en TD
+  };
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: 540,
+        height: 540,
+        display: "grid",
+        placeItems: "center",
+        background:
+          "radial-gradient(1000px 600px at 60% 50%, rgba(168,85,247,0.08), transparent 60%), #0b0e12",
+        border: "1px solid #101826",
+        borderRadius: 12,
+        boxShadow: "0 0 0 1px #0d1622 inset, 0 10px 30px rgba(0,0,0,.35)",
+      }}
+    >
+      <div style={{ padding: 10, borderRadius: 12, background: "#0d131a", boxShadow: "0 0 0 1px #172232 inset" }}>
+        <canvas
+          ref={canvasRef}
+          onMouseDown={mdown}
+          onMouseMove={mmove}
+          onMouseUp={mup}
+          onMouseLeave={mup}
+          onTouchStart={mdown}
+          onTouchMove={mmove}
+          onTouchEnd={mup}
+          style={{
+            width: 512,
+            height: 512,
+            background: "#0f151d",
+            border: "1px solid #1b2432",
+            borderRadius: 8,
+            touchAction: "none",
+            display: "block",
+          }}
+          aria-label={`canvas ${room} (${readyState})`}
+        />
+      </div>
+    </div>
+  );
+}

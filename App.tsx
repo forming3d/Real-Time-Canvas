@@ -32,7 +32,7 @@ type CanvasAPI = {
   getBrushSize: () => number;
 };
 
-// media query hook ligero
+// media query
 function useMedia(query: string) {
   const [m, setM] = useState(() => matchMedia(query).matches);
   useEffect(() => {
@@ -54,7 +54,6 @@ export default function App() {
   const [connected, setConnected] = useState(false);
   const [api, setApi] = useState<CanvasAPI | null>(null);
 
-  // responsive: breakpoint 900px (tablet/móvil)
   const isNarrow = useMedia("(max-width: 900px)");
   const [isSidebarOpen, setSidebarOpen] = useState(false);
 
@@ -68,13 +67,12 @@ export default function App() {
     return () => clearInterval(id);
   }, [api]);
 
-  // layout styles
   const layoutStyle: React.CSSProperties = isNarrow
     ? {
         height: "100dvh",
         width: "100vw",
         display: "grid",
-        gridTemplateRows: "48px 1fr", // topbar + contenido
+        gridTemplateRows: "48px 1fr",
         background: "#0b0e12",
         color: "#e9eef3",
       }
@@ -82,14 +80,13 @@ export default function App() {
         height: "100dvh",
         width: "100vw",
         display: "grid",
-        gridTemplateColumns: "320px 1fr", // sidebar fijo + lienzo
+        gridTemplateColumns: "320px 1fr",
         background: "#0b0e12",
         color: "#e9eef3",
       };
 
   return (
     <div style={layoutStyle}>
-      {/* Top bar solo en pantallas estrechas */}
       {isNarrow && (
         <div
           style={{
@@ -124,7 +121,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Sidebar (fijo en desktop, drawer en mobile) */}
+      {/* Sidebar */}
       {!isNarrow ? (
         <Sidebar
           room={room}
@@ -145,6 +142,9 @@ export default function App() {
           onUndo={() => api?.undo()}
           onRedo={() => api?.redo()}
           onSendPrompt={(text) => {
+            // Para TouchDesigner (espera type/payload)
+            (window as any).__RTC_SEND__?.({ type: "prompt", payload: text });
+            // Opcional: mantener broadcast para otros clientes web
             (window as any).__RTC_SEND__?.({ t: "prompt", room, text });
           }}
           onColorsFromImage={(hexes) => {
@@ -193,6 +193,7 @@ export default function App() {
                 onUndo={() => api?.undo()}
                 onRedo={() => api?.redo()}
                 onSendPrompt={(text) => {
+                  (window as any).__RTC_SEND__?.({ type: "prompt", payload: text });
                   (window as any).__RTC_SEND__?.({ t: "prompt", room, text });
                 }}
                 onColorsFromImage={(hexes) => {
@@ -205,7 +206,7 @@ export default function App() {
         )
       )}
 
-      {/* Área de lienzo: centra y escala */}
+      {/* Canvas area */}
       <div
         style={{
           display: "grid",
@@ -214,11 +215,9 @@ export default function App() {
           overflow: "auto",
         }}
       >
-        {/* El canvas interno sigue a 512x512, pero el contenedor permite escalar visualmente en móvil */}
         <div
           style={{
-            // Escala para que quepa en la pantalla sin barras
-            width: "min(92vw, 90vh)", // cuadrado máximo visible
+            width: "min(92vw, 90vh)",
             maxWidth: 540,
             aspectRatio: "1 / 1",
             display: "grid",

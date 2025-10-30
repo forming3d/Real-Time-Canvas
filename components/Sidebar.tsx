@@ -35,13 +35,13 @@ export default function Sidebar({
 }: Props) {
   const [prompt, setPrompt] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
+
   const [history, setHistory] = useState<string[]>([]);
   const histShown = useMemo(() => history.slice(-10).reverse(), [history]);
 
-  const pushHistory = (hex: string) => {
-    setHistory((h) => [...h, hex].slice(-60));
-  };
+  const [imgPalette, setImgPalette] = useState<string[]>([]); // ← aquí guardamos la paleta extraída
 
+  const pushHistory = (hex: string) => setHistory((h) => [...h, hex].slice(-60));
   const pickFile = () => fileRef.current?.click();
 
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -51,34 +51,33 @@ export default function Sidebar({
     img.onload = () => {
       const c = document.createElement("canvas");
       const ctx = c.getContext("2d")!;
-      // reducimos para acelerar
-      const W = 96, H = 96;
+      const W = 96, H = 96; // reduce para performance
       c.width = W; c.height = H;
       ctx.drawImage(img, 0, 0, W, H);
       const data = ctx.getImageData(0, 0, W, H).data;
 
-      // histograma en cubos 16x16x16
+      const cube = 16; // 4 bits por canal
       const map = new Map<string, number>();
       for (let i = 0; i < data.length; i += 4) {
-        const r = data[i] >> 4;
-        const g = data[i + 1] >> 4;
-        const b = data[i + 2] >> 4;
+        const r = (data[i]   * (cube - 1) / 255) | 0;
+        const g = (data[i+1] * (cube - 1) / 255) | 0;
+        const b = (data[i+2] * (cube - 1) / 255) | 0;
         const key = `${r}-${g}-${b}`;
         map.set(key, (map.get(key) || 0) + 1);
       }
-      const top = [...map.entries()]
+      const toHex = (n: number) => n.toString(16).padStart(2, "0");
+      const colors = [...map.entries()]
         .sort((a, b) => b[1] - a[1])
         .slice(0, 8)
         .map(([k]) => {
-          const [r, g, b] = k.split("-").map((v) => parseInt(v, 10) * 17);
-          const toHex = (n: number) => n.toString(16).padStart(2, "0");
+          const [r, g, b] = k.split("-").map((v) => Math.round((parseInt(v) * 255) / (cube - 1)));
           return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
         });
 
-      onColorsFromImage(top);
+      setImgPalette(colors);
+      onColorsFromImage(colors);
     };
     img.src = URL.createObjectURL(f);
-    // limpia input
     e.target.value = "";
   };
 
@@ -92,6 +91,7 @@ export default function Sidebar({
         gridTemplateRows: "auto auto auto 1fr auto",
         gap: 12,
         background: "#0c1218",
+        minWidth: 0,
       }}
     >
       {/* Estado conexión */}
@@ -107,7 +107,9 @@ export default function Sidebar({
         />
         <strong>Conexión</strong>
         <span style={{ opacity: 0.7, marginLeft: 6 }}>(ver sala)</span>
-        <span style={{ marginLeft: "auto", opacity: 0.7 }}>room: {room}</span>
+        <span style={{ marginLeft: "auto", opacity: 0.7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          room: {room}
+        </span>
       </div>
 
       {/* Prompt */}
@@ -146,10 +148,9 @@ export default function Sidebar({
       </div>
 
       {/* Color */}
-      <div>
+      <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>Color</div>
-        {/* “Rueda” simple (input color) */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <input
             type="color"
             value={color}
@@ -159,8 +160,10 @@ export default function Sidebar({
             }}
             style={{ width: 120, height: 120, border: "1px solid #1b2330", borderRadius: 999, background: "none" }}
           />
-          <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
             <div style={{ fontSize: 12, opacity: 0.7 }}>{color}</div>
+
+            {/* Presets */}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {PRESETS.map((c) => (
                 <button
@@ -181,8 +184,10 @@ export default function Sidebar({
                 />
               ))}
             </div>
+
+            {/* Historial */}
             <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>Historial</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxWidth: "100%" }}>
               {histShown.map((c, i) => (
                 <button
                   key={`${c}-${i}`}
@@ -199,14 +204,10 @@ export default function Sidebar({
                 />
               ))}
             </div>
-            <div style={{ marginTop: 8 }}>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                onChange={onFile}
-                hidden
-              />
+
+            {/* Paleta desde imagen */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+              <input ref={fileRef} type="file" accept="image/*" onChange={onFile} hidden />
               <button
                 onClick={pickFile}
                 style={{
@@ -220,6 +221,28 @@ export default function Sidebar({
               >
                 Subir imagen → paleta
               </button>
+              {!!imgPalette.length && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {imgPalette.map((c, i) => (
+                    <button
+                      key={`${c}-${i}`}
+                      onClick={() => {
+                        onColor(c);
+                        pushHistory(c);
+                      }}
+                      title={c}
+                      style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: 4,
+                        border: "1px solid #2a3546",
+                        background: c,
+                        cursor: "pointer",
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -228,16 +251,10 @@ export default function Sidebar({
       {/* Spacer */}
       <div />
 
-      {/* Ajustes de pincel / Acciones */}
+      {/* Ajustes + acciones */}
       <div style={{ display: "grid", gap: 10 }}>
         <div style={{ fontSize: 12, opacity: 0.7 }}>Ajustes del pincel</div>
-        <input
-          type="range"
-          min={1}
-          max={60}
-          value={brushSize}
-          onChange={(e) => onBrushSize(parseInt(e.target.value, 10))}
-        />
+        <input type="range" min={1} max={60} value={brushSize} onChange={(e) => onBrushSize(parseInt(e.target.value, 10))} />
         <div style={{ display: "flex", gap: 8 }}>
           <button
             onClick={() => onMode("draw")}
@@ -272,29 +289,13 @@ export default function Sidebar({
         <div style={{ display: "flex", gap: 8 }}>
           <button
             onClick={onUndo}
-            style={{
-              flex: 1,
-              padding: "8px 10px",
-              borderRadius: 8,
-              border: "1px solid #243041",
-              background: "#0a0f15",
-              color: "#e9eef3",
-              cursor: "pointer",
-            }}
+            style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: "1px solid #243041", background: "#0a0f15", color: "#e9eef3", cursor: "pointer" }}
           >
             ⬅️ Deshacer
           </button>
           <button
             onClick={onRedo}
-            style={{
-              flex: 1,
-              padding: "8px 10px",
-              borderRadius: 8,
-              border: "1px solid #243041",
-              background: "#0a0f15",
-              color: "#e9eef3",
-              cursor: "pointer",
-            }}
+            style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: "1px solid #243041", background: "#0a0f15", color: "#e9eef3", cursor: "pointer" }}
           >
             ➡️ Rehacer
           </button>

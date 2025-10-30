@@ -14,8 +14,8 @@ type Props = {
 type DrawMsg = {
   t: "draw";
   room: string;
-  x0: number; y0: number;
-  x1: number; y1: number;
+  x0: number; y0: number; // normalizados 0..1
+  x1: number; y1: number; // normalizados 0..1
   color: string;
   size: number;
   mode: "draw" | "erase";
@@ -24,7 +24,6 @@ type DrawMsg = {
 export default function DrawingCanvas({
   wsUrl, room, color, size, mode, onApiReady, onConnectionChange
 }: Props) {
-  const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const undoStack = useRef<ImageData[]>([]);
@@ -32,7 +31,12 @@ export default function DrawingCanvas({
 
   const { send, onMessage, readyState } = useWebSocket(wsUrl);
 
-  // exponer un pequeño API a App/Sidebar
+  // expose sender for App/Sidebar (prompts, etc)
+  useEffect(() => {
+    (window as any).__RTC_SEND__ = (o: any) => send(o);
+  }, [send]);
+
+  // API para App/Sidebar
   useEffect(() => {
     const api = {
       setMode: (m: "draw" | "erase") => { current.mode = m; },
@@ -44,19 +48,16 @@ export default function DrawingCanvas({
       getBrushSize: () => current.size,
     };
     onApiReady(api);
-    // también exponer un sender global para prompts
-    (window as any).__RTC_SEND__ = (o: any) => send(o);
-  }, []);
+  }, [onApiReady]);
 
-  // mantener estado actual “fuera de React”
   const current = useRef({ color, size, mode });
   useEffect(() => { current.current = { color, size, mode }; }, [color, size, mode]);
 
   useEffect(() => {
     onConnectionChange?.(readyState === "OPEN");
-  }, [readyState]);
+  }, [readyState, onConnectionChange]);
 
-  // preparar canvas 512×512 con DPR
+  // Buffer 512x512 (con DPR)
   useEffect(() => {
     const cvs = canvasRef.current!;
     const dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -67,38 +68,43 @@ export default function DrawingCanvas({
     cvs.style.height = `${H}px`;
     const ctx = cvs.getContext("2d")!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // fondo transparente; si quieres gris oscuro:
-    // ctx.fillStyle = "#0e1319"; ctx.fillRect(0,0,W,H);
-    pushUndo(); // estado inicial
+    pushUndo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // recepción WS
+  // ======= TouchDesigner snapshots =======
+  const lastSnap = useRef<number>(0);
+  const SNAP_MS = 200; // limita cada 200ms
+
+  const sendSnapshot = () => {
+    const now = performance.now();
+    if (now - lastSnap.current < SNAP_MS) return;
+    lastSnap.current = now;
+    try {
+      const dataUrl = canvasRef.current!.toDataURL("image/png");
+      // Mensaje que espera TouchDesigner
+      send({ type: "draw", payload: dataUrl });
+    } catch { /* ignore */ }
+  };
+
+  // ======= Recepción WS de otros clientes (trazos normalizados) =======
   useEffect(() => {
     return onMessage((raw) => {
       try {
-        const msg = JSON.parse(raw.data) as DrawMsg;
+        const msg = JSON.parse(raw.data) as DrawMsg | any;
         if (msg.t !== "draw" || msg.room !== room) return;
+        // convierte a píxeles (buffer 512x512)
         drawSegment(
-          { x: msg.x0, y: msg.y0 },
-          { x: msg.x1, y: msg.y1 },
+          { x: msg.x0 * 512, y: msg.y0 * 512 },
+          { x: msg.x1 * 512, y: msg.y1 * 512 },
           msg.color, msg.size, msg.mode
         );
       } catch {}
     });
   }, [onMessage, room]);
 
-  // helpers
+  // ======= Helpers =======
   const getCtx = () => canvasRef.current!.getContext("2d")!;
-  const toLocal = (ev: MouseEvent | TouchEvent) => {
-    const cvs = canvasRef.current!;
-    const rect = cvs.getBoundingClientRect();
-    const pt = "touches" in ev ? ev.touches[0] : (ev as MouseEvent);
-    return {
-      x: (pt.clientX - rect.left),
-      y: (pt.clientY - rect.top),
-    };
-  };
 
   const drawSegment = (
     from: {x:number;y:number},
@@ -124,17 +130,28 @@ export default function DrawingCanvas({
     ctx.restore();
   };
 
-  // input
+  // ======= Input local =======
   const last = useRef<{x:number;y:number}|null>(null);
+  const toLocal = (ev: MouseEvent | TouchEvent) => {
+    const cvs = canvasRef.current!;
+    const rect = cvs.getBoundingClientRect();
+    const pt = "touches" in ev ? ev.touches[0] : (ev as MouseEvent);
+    return { x: (pt.clientX - rect.left), y: (pt.clientY - rect.top) };
+  };
+
   const mdown = (e: React.MouseEvent|React.TouchEvent) => {
     e.preventDefault();
     last.current = toLocal(e.nativeEvent as any);
   };
+
   const mmove = (e: React.MouseEvent|React.TouchEvent) => {
     if (!last.current) return;
     const p = toLocal(e.nativeEvent as any);
+
+    // dibuja local
     drawSegment(last.current, p, current.current.color, current.current.size, current.current.mode);
-    // broadcast normalizado (0..1 relativas al 512x512)
+
+    // broadcast normalizado para otros clientes web
     const x0 = last.current.x/512, y0 = last.current.y/512;
     const x1 = p.x/512, y1 = p.y/512;
     send({
@@ -144,14 +161,21 @@ export default function DrawingCanvas({
       size: current.current.size,
       mode: current.current.mode
     });
+
+    // snapshot para TouchDesigner
+    sendSnapshot();
+
     last.current = p;
   };
+
   const mup = () => {
     if (last.current) pushUndo();
     last.current = null;
+    // snapshot final del trazo para TD
+    sendSnapshot();
   };
 
-  // historial
+  // ======= Historial =======
   const pushUndo = () => {
     const ctx = getCtx();
     const img = ctx.getImageData(0, 0, 512, 512);
@@ -162,7 +186,7 @@ export default function DrawingCanvas({
   const undo = () => {
     if (undoStack.current.length <= 1) return;
     const ctx = getCtx();
-    const last = undoStack.current.pop()!; // actual
+    const last = undoStack.current.pop()!;
     redoStack.current.push(last);
     const prev = undoStack.current[undoStack.current.length - 1];
     ctx.putImageData(prev, 0, 0);
@@ -178,11 +202,11 @@ export default function DrawingCanvas({
     const ctx = getCtx();
     ctx.clearRect(0, 0, 512, 512);
     pushUndo();
+    sendSnapshot(); // refleja limpieza en TD
   };
 
   return (
     <div
-      ref={wrapRef}
       style={{
         position: "relative",
         width: 540,

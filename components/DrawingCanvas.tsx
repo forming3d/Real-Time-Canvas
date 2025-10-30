@@ -1,91 +1,121 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import useWebSocket from "../hooks/useWebSocket";
 
 type Props = {
-  color: string;
-  size: number;
   wsUrl: string;
   room: string;
+  color: string;
+  size: number;
+  mode: "draw" | "erase";
+  onApiReady: (api: any) => void;
+  onConnectionChange?: (isOpen: boolean) => void;
 };
 
 type DrawMsg = {
   t: "draw";
   room: string;
-  x0: number;
-  y0: number;
-  x1: number;
-  y1: number;
+  x0: number; y0: number;
+  x1: number; y1: number;
   color: string;
   size: number;
   mode: "draw" | "erase";
 };
 
-export default function DrawingCanvas({ color, size, wsUrl, room }: Props) {
+export default function DrawingCanvas({
+  wsUrl, room, color, size, mode, onApiReady, onConnectionChange
+}: Props) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const overlayRef = useRef<HTMLCanvasElement | null>(null); // para ver el BEFORE
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
 
-  const [isDown, setIsDown] = useState(false);
-  const [lastPt, setLastPt] = useState<{ x: number; y: number } | null>(null);
-  const [mode, setMode] = useState<"draw" | "erase">("draw");
-
-  const [beforeImg, setBeforeImg] = useState<string | null>(null); // dataURL del BEFORE
-  const [showCompare, setShowCompare] = useState(false);
+  const undoStack = useRef<ImageData[]>([]);
+  const redoStack = useRef<ImageData[]>([]);
 
   const { send, onMessage, readyState } = useWebSocket(wsUrl);
 
-  // Resize canvas & overlay
-  const resizeCanvas = () => {
-    const cvs = canvasRef.current!;
-    const ov = overlayRef.current!;
-    const wrap = wrapperRef.current!;
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const w = wrap.clientWidth;
-    const h = wrap.clientHeight;
+  // exponer un pequeño API a App/Sidebar
+  useEffect(() => {
+    const api = {
+      setMode: (m: "draw" | "erase") => { current.mode = m; },
+      getMode: () => current.mode,
+      clearAll: () => clearAll(),
+      undo: () => undo(),
+      redo: () => redo(),
+      setBrushSize: (n: number) => { current.size = n; },
+      getBrushSize: () => current.size,
+    };
+    onApiReady(api);
+    // también exponer un sender global para prompts
+    (window as any).__RTC_SEND__ = (o: any) => send(o);
+  }, []);
 
-    for (const el of [cvs, ov]) {
-      el.width = Math.max(1, Math.floor(w * dpr));
-      el.height = Math.max(1, Math.floor(h * dpr));
-      el.style.width = `${w}px`;
-      el.style.height = `${h}px`;
-      const ctx = el.getContext("2d")!;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    }
-
-    // si hay BEFORE, redibujar en overlay si está activo
-    if (beforeImg && showCompare) drawBeforeOverlay();
-  };
+  // mantener estado actual “fuera de React”
+  const current = useRef({ color, size, mode });
+  useEffect(() => { current.current = { color, size, mode }; }, [color, size, mode]);
 
   useEffect(() => {
-    resizeCanvas();
-    const obs = new ResizeObserver(resizeCanvas);
-    if (wrapperRef.current) obs.observe(wrapperRef.current);
-    window.addEventListener("orientationchange", resizeCanvas);
-    return () => {
-      obs.disconnect();
-      window.removeEventListener("orientationchange", resizeCanvas);
-    };
-  }, [beforeImg, showCompare]);
+    onConnectionChange?.(readyState === "OPEN");
+  }, [readyState]);
 
-  // Dibujo de un segmento
+  // preparar canvas 512×512 con DPR
+  useEffect(() => {
+    const cvs = canvasRef.current!;
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const W = 512, H = 512;
+    cvs.width = Math.floor(W * dpr);
+    cvs.height = Math.floor(H * dpr);
+    cvs.style.width = `${W}px`;
+    cvs.style.height = `${H}px`;
+    const ctx = cvs.getContext("2d")!;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // fondo transparente; si quieres gris oscuro:
+    // ctx.fillStyle = "#0e1319"; ctx.fillRect(0,0,W,H);
+    pushUndo(); // estado inicial
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // recepción WS
+  useEffect(() => {
+    return onMessage((raw) => {
+      try {
+        const msg = JSON.parse(raw.data) as DrawMsg;
+        if (msg.t !== "draw" || msg.room !== room) return;
+        drawSegment(
+          { x: msg.x0, y: msg.y0 },
+          { x: msg.x1, y: msg.y1 },
+          msg.color, msg.size, msg.mode
+        );
+      } catch {}
+    });
+  }, [onMessage, room]);
+
+  // helpers
+  const getCtx = () => canvasRef.current!.getContext("2d")!;
+  const toLocal = (ev: MouseEvent | TouchEvent) => {
+    const cvs = canvasRef.current!;
+    const rect = cvs.getBoundingClientRect();
+    const pt = "touches" in ev ? ev.touches[0] : (ev as MouseEvent);
+    return {
+      x: (pt.clientX - rect.left),
+      y: (pt.clientY - rect.top),
+    };
+  };
+
   const drawSegment = (
-    ctx: CanvasRenderingContext2D,
-    from: { x: number; y: number },
-    to: { x: number; y: number },
-    c: string,
-    s: number,
-    m: "draw" | "erase"
+    from: {x:number;y:number},
+    to: {x:number;y:number},
+    col: string, sz: number, md: "draw"|"erase"
   ) => {
+    const ctx = getCtx();
     ctx.save();
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.lineWidth = s;
-    if (m === "erase") {
+    ctx.lineWidth = sz;
+    if (md === "erase") {
       ctx.globalCompositeOperation = "destination-out";
       ctx.strokeStyle = "rgba(0,0,0,1)";
     } else {
       ctx.globalCompositeOperation = "source-over";
-      ctx.strokeStyle = c;
+      ctx.strokeStyle = col;
     }
     ctx.beginPath();
     ctx.moveTo(from.x, from.y);
@@ -94,183 +124,100 @@ export default function DrawingCanvas({ color, size, wsUrl, room }: Props) {
     ctx.restore();
   };
 
-  // Entrada de otros clientes
-  useEffect(() => {
-    return onMessage((raw) => {
-      try {
-        const msg: DrawMsg = JSON.parse(raw.data);
-        if (msg.t !== "draw" || msg.room !== room) return;
-        const cvs = canvasRef.current!;
-        const rect = cvs.getBoundingClientRect();
-        const ctx = cvs.getContext("2d")!;
-        drawSegment(
-          ctx,
-          { x: msg.x0 * rect.width, y: msg.y0 * rect.height },
-          { x: msg.x1 * rect.width, y: msg.y1 * rect.height },
-          msg.color,
-          msg.size,
-          msg.mode
-        );
-      } catch {}
+  // input
+  const last = useRef<{x:number;y:number}|null>(null);
+  const mdown = (e: React.MouseEvent|React.TouchEvent) => {
+    e.preventDefault();
+    last.current = toLocal(e.nativeEvent as any);
+  };
+  const mmove = (e: React.MouseEvent|React.TouchEvent) => {
+    if (!last.current) return;
+    const p = toLocal(e.nativeEvent as any);
+    drawSegment(last.current, p, current.current.color, current.current.size, current.current.mode);
+    // broadcast normalizado (0..1 relativas al 512x512)
+    const x0 = last.current.x/512, y0 = last.current.y/512;
+    const x1 = p.x/512, y1 = p.y/512;
+    send({
+      t: "draw", room,
+      x0, y0, x1, y1,
+      color: current.current.color,
+      size: current.current.size,
+      mode: current.current.mode
     });
-  }, [onMessage, room]);
-
-  // Normaliza coords 0..1
-  const norm = (ev: MouseEvent | TouchEvent) => {
-    const cvs = canvasRef.current!;
-    const rect = cvs.getBoundingClientRect();
-    const pt = "touches" in ev ? ev.touches[0] : (ev as MouseEvent);
-    const x = (pt.clientX - rect.left) / rect.width;
-    const y = (pt.clientY - rect.top) / rect.height;
-    return { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) };
+    last.current = p;
+  };
+  const mup = () => {
+    if (last.current) pushUndo();
+    last.current = null;
   };
 
-  const handleDown = (ev: React.MouseEvent | React.TouchEvent) => {
-    ev.preventDefault();
-    setIsDown(true);
-    const p = norm(ev.nativeEvent as any);
-    setLastPt(p);
+  // historial
+  const pushUndo = () => {
+    const ctx = getCtx();
+    const img = ctx.getImageData(0, 0, 512, 512);
+    undoStack.current.push(img);
+    if (undoStack.current.length > 50) undoStack.current.shift();
+    redoStack.current = [];
   };
-
-  const handleMove = (ev: React.MouseEvent | React.TouchEvent) => {
-    if (!isDown) return;
-    const p = norm(ev.nativeEvent as any);
-    if (lastPt) {
-      const cvs = canvasRef.current!;
-      const rect = cvs.getBoundingClientRect();
-      const ctx = cvs.getContext("2d")!;
-      drawSegment(
-        ctx,
-        { x: lastPt.x * rect.width, y: lastPt.y * rect.height },
-        { x: p.x * rect.width, y: p.y * rect.height },
-        color,
-        size,
-        mode
-      );
-
-      // broadcast
-      const msg: DrawMsg = {
-        t: "draw",
-        room,
-        x0: lastPt.x,
-        y0: lastPt.y,
-        x1: p.x,
-        y1: p.y,
-        color,
-        size,
-        mode,
-      };
-      send(msg);
-    }
-    setLastPt(p);
+  const undo = () => {
+    if (undoStack.current.length <= 1) return;
+    const ctx = getCtx();
+    const last = undoStack.current.pop()!; // actual
+    redoStack.current.push(last);
+    const prev = undoStack.current[undoStack.current.length - 1];
+    ctx.putImageData(prev, 0, 0);
   };
-
-  const handleUp = () => {
-    setIsDown(false);
-    setLastPt(null);
+  const redo = () => {
+    if (!redoStack.current.length) return;
+    const ctx = getCtx();
+    const img = redoStack.current.pop()!;
+    ctx.putImageData(img, 0, 0);
+    undoStack.current.push(img);
   };
-
-  // --- API expuesta al panel ---
   const clearAll = () => {
-    const cvs = canvasRef.current!;
-    const ctx = cvs.getContext("2d")!;
-    ctx.clearRect(0, 0, cvs.width, cvs.height);
+    const ctx = getCtx();
+    ctx.clearRect(0, 0, 512, 512);
+    pushUndo();
   };
 
-  const saveBefore = () => {
-    const cvs = canvasRef.current!;
-    setBeforeImg(cvs.toDataURL("image/png"));
-  };
-
-  const drawBeforeOverlay = () => {
-    const ov = overlayRef.current!;
-    const ctx = ov.getContext("2d")!;
-    ctx.clearRect(0, 0, ov.width, ov.height);
-    if (!beforeImg) return;
-    const img = new Image();
-    img.onload = () => {
-      ctx.globalAlpha = 0.65; // opacidad del BEFORE
-      // Ajusta al tamaño CSS actual
-      const rect = ov.getBoundingClientRect();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.drawImage(img, 0, 0, rect.width, rect.height);
-    };
-    img.src = beforeImg;
-  };
-
-  useEffect(() => {
-    if (showCompare) drawBeforeOverlay();
-    else {
-      const ov = overlayRef.current!;
-      ov.getContext("2d")!.clearRect(0, 0, ov.width, ov.height);
-    }
-  }, [showCompare]);
-
-  const revertBefore = () => {
-    if (!beforeImg) return;
-    const img = new Image();
-    img.onload = () => {
-      const cvs = canvasRef.current!;
-      const ctx = cvs.getContext("2d")!;
-      const rect = cvs.getBoundingClientRect();
-      ctx.clearRect(0, 0, rect.width, rect.height);
-      ctx.drawImage(img, 0, 0, rect.width, rect.height);
-    };
-    img.src = beforeImg;
-  };
-
-  // Render
   return (
-    <div ref={wrapperRef} style={{ width: "100%", height: "100%", position: "relative" }}>
-      <canvas
-        ref={canvasRef}
-        onMouseDown={handleDown}
-        onMouseMove={handleMove}
-        onMouseUp={handleUp}
-        onMouseLeave={handleUp}
-        onTouchStart={handleDown}
-        onTouchMove={handleMove}
-        onTouchEnd={handleUp}
-        style={{ display: "block", touchAction: "none", background: "#0e0e14", position: "absolute", inset: 0 }}
-        aria-label={`canvas ${room} (${readyState})`}
-      />
-      {/* Overlay para ver el BEFORE al mantener pulsado el botón */}
-      <canvas
-        ref={overlayRef}
-        style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
-      />
-
-      {/* Controles (se comunican con App a través de props mediante el footer) */}
-      {/* Nota: El panel está en App; solo exponemos funciones via callbacks */}
-      <ControlsBridge
-        mode={mode}
-        setMode={setMode}
-        clearAll={clearAll}
-        saveBefore={saveBefore}
-        setShowCompare={setShowCompare}
-        revertBefore={revertBefore}
-        hasBefore={!!beforeImg}
-      />
+    <div
+      ref={wrapRef}
+      style={{
+        position: "relative",
+        width: 540,
+        height: 540,
+        display: "grid",
+        placeItems: "center",
+        background:
+          "radial-gradient(1000px 600px at 60% 50%, rgba(168,85,247,0.08), transparent 60%), #0b0e12",
+        border: "1px solid #101826",
+        borderRadius: 12,
+        boxShadow: "0 0 0 1px #0d1622 inset, 0 10px 30px rgba(0,0,0,.35)",
+      }}
+    >
+      <div style={{ padding: 10, borderRadius: 12, background: "#0d131a", boxShadow: "0 0 0 1px #172232 inset" }}>
+        <canvas
+          ref={canvasRef}
+          onMouseDown={mdown}
+          onMouseMove={mmove}
+          onMouseUp={mup}
+          onMouseLeave={mup}
+          onTouchStart={mdown}
+          onTouchMove={mmove}
+          onTouchEnd={mup}
+          style={{
+            width: 512,
+            height: 512,
+            background: "#0f151d",
+            border: "1px solid #1b2432",
+            borderRadius: 8,
+            touchAction: "none",
+            display: "block",
+          }}
+          aria-label={`canvas ${room} (${readyState})`}
+        />
+      </div>
     </div>
   );
-}
-
-/**
- * Pequeño bridge para pasar handlers a ControlPanel sin cambiar App.tsx.
- * App “escucha” custom events del DOM y los reinyecta en ControlPanel.
- */
-function ControlsBridge(props: {
-  mode: "draw" | "erase";
-  setMode: (m: "draw" | "erase") => void;
-  clearAll: () => void;
-  saveBefore: () => void;
-  setShowCompare: (b: boolean) => void;
-  revertBefore: () => void;
-  hasBefore: boolean;
-}) {
-  // Publica funciones en window para que App.tsx las consuma
-  // (más simple que levantar mucho estado ahora mismo)
-  // @ts-ignore
-  window.__RTC_CANVAS_API__ = props;
-  return null;
 }

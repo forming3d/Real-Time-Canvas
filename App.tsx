@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import DrawingCanvas from "./components/DrawingCanvas";
 import ControlPanel from "./components/ControlPanel";
 import ColorPicker from "./components/ColorPicker";
 
+// --- Utils -------------------------------------------------------------
 function getQueryParam(names: string[], def = ""): string {
   const q = new URLSearchParams(window.location.search);
   for (const n of names) {
@@ -13,22 +14,53 @@ function getQueryParam(names: string[], def = ""): string {
 }
 
 function buildWsUrl(room: string) {
-  // Si no hay VITE_WS_URL, se deduce del host actual
   const base =
     import.meta.env.VITE_WS_URL ||
     `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
   const url = new URL(base);
-  // rol=canvas para que tu servidor diferencie clientes
   url.searchParams.set("role", "canvas");
   if (room) url.searchParams.set("room", room);
   return url.toString();
 }
 
+// Tipos del “bridge” que expone el canvas en window
+type CanvasAPI = {
+  mode: "draw" | "erase";
+  setMode: (m: "draw" | "erase") => void;
+  clearAll: () => void;
+  saveBefore: () => void;
+  setShowCompare: (b: boolean) => void;
+  revertBefore: () => void;
+  hasBefore: boolean;
+};
+
+// Helper para leer el bridge de forma segura
+function getCanvasAPI(): CanvasAPI | undefined {
+  // @ts-ignore
+  return (window as any).__RTC_CANVAS_API__ as CanvasAPI | undefined;
+}
+
+// --- Componente --------------------------------------------------------
 export default function App() {
   const [color, setColor] = useState<string>("#ffcc00");
   const [size, setSize] = useState<number>(6);
 
-  // ROOM desde URL (?room=xxx o ?r=xxx). Si no, "room-default"
+  // Estado reflejado desde el canvas (para resaltar botones y deshabilitar)
+  const [mode, setModeState] = useState<"draw" | "erase">("draw");
+  const [hasBefore, setHasBefore] = useState<boolean>(false);
+
+  // Sincroniza cada ~200 ms con el bridge del canvas para mantener el UI al día
+  useEffect(() => {
+    const id = setInterval(() => {
+      const api = getCanvasAPI();
+      if (!api) return;
+      setModeState((prev) => (prev !== api.mode ? api.mode : prev));
+      setHasBefore((prev) => (prev !== api.hasBefore ? api.hasBefore : prev));
+    }, 200);
+    return () => clearInterval(id);
+  }, []);
+
+  // ROOM y URL del WS
   const room = useMemo(() => getQueryParam(["room", "r"], "room-default"), []);
   const wsUrl = useMemo(() => buildWsUrl(room), [room]);
 
@@ -61,8 +93,21 @@ export default function App() {
           alignItems: "center",
         }}
       >
+        {/* Selector de color */}
         <ColorPicker value={color} onChange={setColor} />
-        <ControlPanel size={size} onSizeChange={setSize} />
+
+        {/* Panel de controles con Erase + Before/After */}
+        <ControlPanel
+          size={size}
+          onSizeChange={setSize}
+          mode={mode}
+          onModeChange={(m) => getCanvasAPI()?.setMode(m)}
+          onClear={() => getCanvasAPI()?.clearAll()}
+          onSaveBefore={() => getCanvasAPI()?.saveBefore()}
+          onToggleCompare={(b) => getCanvasAPI()?.setShowCompare(b)}
+          onRevertBefore={() => getCanvasAPI()?.revertBefore()}
+          hasBefore={hasBefore}
+        />
       </footer>
     </div>
   );

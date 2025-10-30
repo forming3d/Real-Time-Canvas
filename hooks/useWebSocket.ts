@@ -1,56 +1,56 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-type WSMsg =
-  | { type: "prompt"; payload: string }
-  | { type: "draw"; payload: string }
-  | { type: "ping" }
-  | { type: string; payload?: any };
+export type WSStatus = "connecting" | "open" | "closed";
 
-const DEFAULT_URL =
-  (import.meta.env.VITE_WS_URL as string) ||
-  // si sirves la web desde Render/HTTPS construimos wss:
-  (location.protocol === "https:"
-    ? `wss://${location.host}`
-    : `ws://${location.hostname}:9980`);
+function getRoomFromURL() {
+  const qs = new URLSearchParams(window.location.search);
+  return qs.get("room") || "default";
+}
 
-export function useWebSocket(onMessage?: (m: MessageEvent) => void, url = DEFAULT_URL) {
+// CAMBIA este dominio si usas otro servicio
+const WS_BASE = "wss://real-time-canvas-ok.onrender.com/ws";
+
+export function useWS(roomParam?: string) {
+  const room = roomParam || getRoomFromURL();
+  const [status, setStatus] = useState<WSStatus>("connecting");
   const wsRef = useRef<WebSocket | null>(null);
-  const pingTimer = useRef<number | null>(null);
-
-  const sendJson = useCallback((obj: WSMsg) => {
-    const ws = wsRef.current;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(obj));
-    }
-  }, []);
+  const queueRef = useRef<string[]>([]);
 
   useEffect(() => {
+    const url = `${WS_BASE}?room=${encodeURIComponent(room)}&role=web`;
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
-    ws.addEventListener("open", () => {
-      // keep-alive (Render cierra por inactividad)
-      pingTimer.current = window.setInterval(() => {
-        try { ws.send(JSON.stringify({ type: "ping" })); } catch {}
-      }, 25000) as unknown as number;
-    });
+    ws.onopen = () => {
+      setStatus("open");
+      // flush cola
+      for (const m of queueRef.current) ws.send(m);
+      queueRef.current = [];
+      ws.send(JSON.stringify({ type: "hello", payload: "web" }));
+    };
 
-    if (onMessage) ws.addEventListener("message", onMessage);
+    ws.onclose = () => setStatus("closed");
+    ws.onerror = () => setStatus("closed");
 
-    ws.addEventListener("close", () => {
-      if (pingTimer.current) { clearInterval(pingTimer.current); pingTimer.current = null; }
-    });
-
-    ws.addEventListener("error", () => {
-      // no tiramos la app; solo dejamos que reintentes recargando
-    });
+    // keepalive
+    const ping = window.setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "ping", payload: Date.now() }));
+      }
+    }, 25000);
 
     return () => {
-      if (pingTimer.current) { clearInterval(pingTimer.current); pingTimer.current = null; }
+      clearInterval(ping);
       try { ws.close(); } catch {}
-      wsRef.current = null;
     };
-  }, [url, onMessage]);
+  }, [room]);
 
-  return { sendJson };
+  const send = useCallback((type: string, payload: any) => {
+    const msg = JSON.stringify({ type, payload });
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(msg);
+    else queueRef.current.push(msg);
+  }, []);
+
+  return { send, status, room };
 }

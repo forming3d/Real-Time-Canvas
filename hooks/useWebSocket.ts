@@ -1,96 +1,129 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ConnectionStatus } from '../types';
 
-type Options = {
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { ConnectionStatus, TouchDesignerConfig } from '../types';
+
+interface UseWebSocketOptions {
   autoReconnect?: boolean;
   maxReconnectAttempts?: number;
-  reconnectInterval?: number; // ms
-};
+  reconnectInterval?: number;
+}
 
-export function useWebSocket(url: string, opts: Options = {}) {
+export const useWebSocket = (url: string, options: UseWebSocketOptions = {}) => {
   const {
     autoReconnect = true,
-    maxReconnectAttempts = 8,
-    reconnectInterval = 1000,
-  } = opts;
+    maxReconnectAttempts = 5,
+    reconnectInterval = 1000
+  } = options;
 
-  const [connectionStatus, setStatus] = useState<ConnectionStatus>('DISCONNECTED');
-  const wsRef = useRef<WebSocket | null>(null);
-  const attemptsRef = useRef(0);
-  const reconnectTimer = useRef<number | null>(null);
-
-  const clearTimer = () => {
-    if (reconnectTimer.current !== null) {
-      window.clearTimeout(reconnectTimer.current);
-      reconnectTimer.current = null;
-    }
-  };
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(ConnectionStatus.DISCONNECTED);
+  const socketRef = useRef<WebSocket | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  // Use number for browser setTimeout id to avoid NodeJS typing requirement
+  const reconnectTimeoutRef = useRef<number | null>(null);
+  const isManualDisconnectRef = useRef(false);
 
   const connect = useCallback(() => {
-    clearTimer();
-    if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      console.log('WebSocket is already connected.');
       return;
     }
-    setStatus('CONNECTING');
 
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
+    isManualDisconnectRef.current = false;
+    setConnectionStatus(ConnectionStatus.CONNECTING);
+    
+    try {
+      const socket = new WebSocket(url);
+      socketRef.current = socket;
 
-    ws.onopen = () => {
-      attemptsRef.current = 0;
-      setStatus('CONNECTED');
-    };
+      socket.onopen = () => {
+        setConnectionStatus(ConnectionStatus.CONNECTED);
+        reconnectAttemptsRef.current = 0;
+        console.log('WebSocket connected to TouchDesigner');
+      };
 
-    ws.onclose = () => {
-      wsRef.current = null;
-      if (autoReconnect && attemptsRef.current < maxReconnectAttempts) {
-        attemptsRef.current += 1;
-        setStatus('RECONNECTING');
-        clearTimer();
-        reconnectTimer.current = window.setTimeout(connect, reconnectInterval);
-      } else {
-        setStatus('DISCONNECTED');
-      }
-    };
+      socket.onclose = (event) => {
+        console.log('WebSocket disconnected:', event.code, event.reason);
+        
+        if (!isManualDisconnectRef.current && autoReconnect && reconnectAttemptsRef.current < maxReconnectAttempts) {
+          reconnectAttemptsRef.current++;
+          console.log(`Attempting to reconnect (${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`);
+          
+          reconnectTimeoutRef.current = window.setTimeout(() => {
+            connect();
+          }, reconnectInterval * reconnectAttemptsRef.current);
+          
+          setConnectionStatus(ConnectionStatus.CONNECTING);
+        } else {
+          setConnectionStatus(ConnectionStatus.DISCONNECTED);
+          if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+            setConnectionStatus(ConnectionStatus.ERROR);
+            console.error('Max reconnection attempts reached');
+          }
+        }
+      };
 
-    ws.onerror = () => {
-      setStatus('ERROR');
-      ws.close();
-    };
-
-    ws.onmessage = () => {
-      // Si quieres manejar mensajes entrantes, hazlo aquí.
-    };
+      socket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setConnectionStatus(ConnectionStatus.ERROR);
+      };
+    } catch (error) {
+      setConnectionStatus(ConnectionStatus.ERROR);
+      console.error('Failed to create WebSocket:', error);
+    }
   }, [url, autoReconnect, maxReconnectAttempts, reconnectInterval]);
 
   const disconnect = useCallback(() => {
-    clearTimer();
-    if (wsRef.current) {
-      wsRef.current.onclose = null;
-      wsRef.current.close();
-      wsRef.current = null;
+    isManualDisconnectRef.current = true;
+    
+    if (reconnectTimeoutRef.current) {
+      window.clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
     }
-    setStatus('DISCONNECTED');
+    
+    if (socketRef.current) {
+      socketRef.current.close();
+      socketRef.current = null;
+    }
+    
+    reconnectAttemptsRef.current = 0;
+    setConnectionStatus(ConnectionStatus.DISCONNECTED);
   }, []);
 
-  const sendMessage = useCallback((data: string | ArrayBufferLike | Blob | ArrayBufferView) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(data);
+  const sendMessage = useCallback((data: string) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      try {
+        socketRef.current.send(data);
+      } catch (error) {
+        console.error('Failed to send message:', error);
+      }
+    } else {
+      console.warn('WebSocket not connected. Message not sent:', data);
     }
   }, []);
 
+  const resetReconnection = useCallback(() => {
+    reconnectAttemptsRef.current = 0;
+    if (reconnectTimeoutRef.current) {
+      window.clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+  }, []);
+  
   useEffect(() => {
-    connect();
     return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
       disconnect();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url]);
+  }, [disconnect]);
 
-  return useMemo(() => ({
-    connectionStatus,
-    connect,
-    disconnect,
-    sendMessage,
-  }), [connectionStatus, connect, disconnect, sendMessage]);
-}
+  return { 
+    connectionStatus, 
+    connect, 
+    disconnect, 
+    sendMessage, 
+    resetReconnection,
+    reconnectAttempts: reconnectAttemptsRef.current
+  };
+};

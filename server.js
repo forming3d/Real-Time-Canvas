@@ -1,31 +1,24 @@
 // server.js
-// Node + Express + WS con rooms + asignación de salas + hardening y heartbeat
+// Node + Express + WS con rooms + asignación de salas
 const path = require("path");
 const express = require("express");
 const http = require("http");
 const { WebSocketServer } = require("ws");
-const helmet = require("helmet");
-const compression = require("compression");
-// const cors = require("cors"); // <- Solo si sirves UI desde otro origen
 
 // --- Static SPA ---
 const DIST_DIR = path.resolve(__dirname, "dist");
 const app = express();
-
 app.disable("x-powered-by");
-app.use(helmet({ contentSecurityPolicy: false })); // Import maps/CDNs -> CSP off
-app.use(compression());
-// app.use(cors({ origin: ["https://TU_DOMINIO"], methods: ["GET","POST"] })); // si aplica
-
 app.use(express.static(DIST_DIR, { fallthrough: true }));
 
 // Healthcheck simple
 app.get("/healthz", (_req, res) => res.status(200).send("ok"));
 
-// ---------- HTTP Server + WS ----------
+// --- HTTP + WebSocket ---
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: "/ws" });
+const wss = new WebSocketServer({ server, path: "/ws", perMessageDeflate: false });
 
+// ---- ROOMS (aislamiento) ----
 /** Map<roomId, Set<WebSocket>> */
 const rooms = new Map();
 
@@ -35,26 +28,11 @@ function sanitize(str, def = "", max = 64) {
   return str.replace(/[^A-Za-z0-9_-]/g, "") || def;
 }
 
-// --- Heartbeat WS ---
-function heartbeat() { this.isAlive = true; }
-const HEARTBEAT_INTERVAL_MS = 30_000;
-const hbInterval = setInterval(() => {
-  wss.clients.forEach((ws) => {
-    if (ws.isAlive === false) return ws.terminate();
-    ws.isAlive = false;
-    try { ws.ping(); } catch {}
-  });
-}, HEARTBEAT_INTERVAL_MS);
-wss.on("close", () => clearInterval(hbInterval));
-
 wss.on("connection", (ws, req) => {
   // /ws?room=<id>&role=<canvas|td>
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   const room = sanitize(url.searchParams.get("room"), "default");
   const role = sanitize(url.searchParams.get("role"), "client", 16);
-
-  ws.isAlive = true;
-  ws.on("pong", heartbeat);
 
   ws._room = room;
   ws._role = role;
@@ -66,19 +44,22 @@ wss.on("connection", (ws, req) => {
   try { ws.send(JSON.stringify({ type: "welcome", payload: Date.now(), room, role })); } catch {}
 
   ws.on("message", (data, isBinary) => {
-    const set = rooms.get(ws._room);
-    if (!set) return;
+    const peers = rooms.get(ws._room);
+    if (!peers) return;
 
     // Enrutado dirigido por rol:
     // - canvas -> td
-    // - td -> canvas
-    // - si no hay roles, broadcast a todos menos remitente
-    for (const peer of set) {
-      if (peer === ws) continue;
-      if (ws._role === "canvas" && peer._role !== "td") continue;
-      if (ws._role === "td" && peer._role !== "canvas") continue;
-
-      try { peer.send(data, { binary: isBinary }); } catch {}
+    // - td     -> canvas
+    // - otros  -> todos menos emisor
+    for (const client of peers) {
+      if (client === ws || client.readyState !== 1) continue;
+      if (ws._role === "canvas" && client._role === "td") {
+        client.send(data, { binary: isBinary });
+      } else if (ws._role === "td" && client._role === "canvas") {
+        client.send(data, { binary: isBinary });
+      } else if (ws._role !== "canvas" && ws._role !== "td") {
+        client.send(data, { binary: isBinary });
+      }
     }
   });
 
@@ -94,7 +75,9 @@ wss.on("connection", (ws, req) => {
   ws.on("error", (e) => console.warn("WS error:", e?.message));
 });
 
-// ---------- Helpers de URL/scheme tras proxy (Render) ----------
+// ---------- API de asignación de salas ----------
+
+// Helpers de URL/scheme tras proxy (Render)
 function originFromReq(req) {
   const proto = (req.headers["x-forwarded-proto"] || "").split(",")[0] || "http";
   const host = req.headers.host;
@@ -111,26 +94,58 @@ function nextAlphaFreeRoom() {
   // "a".."z", luego "aa".."zz", luego "aaa".."zzz"
   for (let len = 1; len <= 3; len++) {
     const recur = function* (prefix, depth) {
-      if (depth === 0) { yield prefix; return; }
-      for (const ch of ABC) yield* recur(prefix + ch, depth - 1);
+      if (depth === len) { yield prefix; return; }
+      for (const ch of ABC) yield* recur(prefix + ch, depth + 1);
     };
-    for (const id of recur("", len)) {
-      if (!rooms.has(id)) return id;
+    for (const cand of recur("", 0)) {
+      if (!rooms.has(cand)) return cand;
     }
   }
-  // fallback
-  return Math.random().toString(36).slice(2, 8);
+  return null;
+}
+function randomRoom(len = 6) {
+  let s = "";
+  while (s.length < len) s += Math.random().toString(36).slice(2);
+  return s.slice(0, len);
 }
 
-// ---------- API de asignación de salas ----------
+/**
+ * GET /api/new-room
+ * Devuelve una sala libre + URLs listas.
+ *   ?strategy=alpha|random (por defecto alpha)
+ *   ?target=canvas|td|both  (informativo)
+ */
 app.get("/api/new-room", (req, res) => {
   res.set("Cache-Control", "no-store");
-  const id = nextAlphaFreeRoom();
+  const strategy = (req.query.strategy || "alpha").toString();
+
+  let room = strategy === "random" ? null : nextAlphaFreeRoom();
+  if (!room) {
+    // fallback: aleatoria que no exista en rooms
+    do { room = randomRoom(6); } while (rooms.has(room));
+  }
+
   const origin = originFromReq(req);
   const wsScheme = wsSchemeFromReq(req);
-  const canvasUrl = `${origin}/?room=${id}`;
-  const wsUrlForTd = `${wsScheme}://${req.headers.host}/ws?room=${id}&role=td`;
-  res.json({ id, canvasUrl, wsUrlForTd });
+
+  const canvasUrl = `${origin}/?room=${encodeURIComponent(room)}`;
+  const tdUrl = `${wsScheme}://${req.headers.host}/ws?room=${encodeURIComponent(room)}&role=td`;
+
+  res.json({ room, canvasUrl, tdUrl });
+});
+
+// ---------- Paso 3 (opcional): páginas helper ----------
+
+/**
+ * GET /open-canvas
+ * Asigna sala y redirige (302) directo al Canvas.
+ * Útil si quieres que el botón "Abrir" no necesite JS.
+ */
+app.get("/open-canvas", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const room = nextAlphaFreeRoom() || randomRoom(6);
+  const origin = originFromReq(req);
+  res.redirect(302, `${origin}/?room=${encodeURIComponent(room)}`);
 });
 
 /**
@@ -138,7 +153,6 @@ app.get("/api/new-room", (req, res) => {
  * Página intermedia que pide /api/new-room y muestra:
  *  - Link Canvas (se puede autoabrir)
  *  - URL WS para TouchDesigner con botón "Copiar"
- *  (Evita innerHTML con user input: usamos textContent en nodos)
  */
 app.get("/new-canvas", (req, res) => {
   res.set("Cache-Control", "no-store");
@@ -157,42 +171,51 @@ app.get("/new-canvas", (req, res) => {
   input[type=text]{flex:1;padding:10px 12px;border-radius:8px;border:1px solid #334155;background:#0b1220;color:#e2e8f0}
   button{padding:10px 12px;border-radius:8px;border:1px solid #334155;background:#0b1220;color:#e2e8f0;cursor:pointer}
   .primary{border:0;background:#a855f7;color:#fff}
+  .ok{color:#22c55e}
   code{background:#111827;border:1px solid #222;padding:2px 6px;border-radius:6px}
 </style>
 </head>
 <body>
   <div class="box">
-    <h1>Crear una sala</h1>
-    <p class="muted">Genera un link de Canvas y la URL de WebSocket para TouchDesigner.</p>
+    <h1>Asignar sala para Canvas</h1>
+    <p class="muted">Esta página reserva una <strong>sala</strong> y te da dos enlaces: Canvas y WebSocket para TouchDesigner.</p>
+    <div id="status">Creando sala…</div>
 
-    <div class="row"><button id="btnNew" class="primary">Crear sala</button></div>
-
-    <div id="result" style="display:none">
+    <div id="content" style="display:none">
+      <div class="row"><strong>Sala:</strong><code id="room"></code></div>
       <div class="row">
-        <span>Canvas:</span>
-        <a id="aCanvas" href="#" target="_blank" rel="noopener">abrir canvas</a>
+        <input id="canvasUrl" type="text" readonly />
+        <button class="primary" id="openCanvas">Abrir Canvas</button>
       </div>
       <div class="row">
-        <span>WS TD:</span>
-        <input type="text" id="wsTd" readonly />
-        <button id="copy">Copiar</button>
+        <input id="tdUrl" type="text" readonly />
+        <button id="copyTd">Copiar TD URL</button>
       </div>
     </div>
   </div>
 <script>
-const $ = (q) => document.querySelector(q);
-$("#btnNew").addEventListener("click", async () => {
-  const r = await fetch("/api/new-room").then(r => r.json());
-  $("#aCanvas").setAttribute("href", r.canvasUrl);
-  $("#aCanvas").textContent = r.canvasUrl;
-  $("#wsTd").value = r.wsUrlForTd;
-  $("#result").style.display = "";
-});
-$("#copy").addEventListener("click", async () => {
-  const el = $("#wsTd");
-  el.select(); el.setSelectionRange(0, 99999);
-  try { await navigator.clipboard.writeText(el.value); } catch {}
-});
+(async function(){
+  try{
+    const r = await fetch('/api/new-room?strategy=alpha', {cache:'no-store'}).then(x=>x.json());
+    if(!r || !r.room){ throw new Error('No room'); }
+    document.getElementById('status').innerHTML = '<span class="ok">Sala creada.</span>';
+    document.getElementById('content').style.display = 'block';
+    document.getElementById('room').textContent = r.room;
+    document.getElementById('canvasUrl').value = r.canvasUrl;
+    document.getElementById('tdUrl').value = r.tdUrl;
+
+    document.getElementById('openCanvas').onclick = ()=>{ location.href = r.canvasUrl; };
+    document.getElementById('copyTd').onclick = async ()=>{
+      try{
+        await navigator.clipboard.writeText(r.tdUrl);
+        document.getElementById('copyTd').textContent = 'Copiado ✓';
+        setTimeout(()=>document.getElementById('copyTd').textContent='Copiar TD URL', 1200);
+      }catch(e){}
+    };
+  }catch(e){
+    document.getElementById('status').textContent = 'Error creando sala. Recarga.';
+  }
+})();
 </script>
 </body>
 </html>`;
@@ -207,5 +230,5 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`HTTP on :${PORT}`);
   console.log(`WS   on :${PORT}/ws?room=<ID>&role=<canvas|td>`);
-  console.log(`API  /api/new-room  | Page /new-canvas`);
+  console.log(`API  /api/new-room  | Page /new-canvas | 302 /open-canvas`);
 });

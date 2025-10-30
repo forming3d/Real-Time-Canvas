@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Sidebar from "./components/Sidebar";
+import BottomBar from "./components/BottomBar";
 import DrawingCanvas from "./components/DrawingCanvas";
 
-// ----------------- utils -----------------
+// ---------- utils ----------
 function getQueryParam(names: string[], def = ""): string {
   const q = new URLSearchParams(window.location.search);
   for (const n of names) {
@@ -32,16 +33,23 @@ type CanvasAPI = {
   getBrushSize: () => number;
 };
 
-// media query
-function useMedia(query: string) {
-  const [m, setM] = useState(() => matchMedia(query).matches);
+// hook tamaño viewport (reacciona a barra de direcciones móvil)
+function useViewport() {
+  const [vw, setVw] = useState(window.innerWidth);
+  const [vh, setVh] = useState(window.innerHeight);
   useEffect(() => {
-    const mm = matchMedia(query);
-    const h = () => setM(mm.matches);
-    mm.addEventListener("change", h);
-    return () => mm.removeEventListener("change", h);
-  }, [query]);
-  return m;
+    const onR = () => {
+      setVw(window.innerWidth);
+      setVh(window.innerHeight);
+    };
+    window.addEventListener("resize", onR);
+    window.addEventListener("orientationchange", onR);
+    return () => {
+      window.removeEventListener("resize", onR);
+      window.removeEventListener("orientationchange", onR);
+    };
+  }, []);
+  return { vw, vh };
 }
 
 export default function App() {
@@ -54,9 +62,6 @@ export default function App() {
   const [connected, setConnected] = useState(false);
   const [api, setApi] = useState<CanvasAPI | null>(null);
 
-  const isNarrow = useMedia("(max-width: 900px)");
-  const [isSidebarOpen, setSidebarOpen] = useState(false);
-
   // sincroniza UI con el canvas
   useEffect(() => {
     const id = setInterval(() => {
@@ -67,174 +72,154 @@ export default function App() {
     return () => clearInterval(id);
   }, [api]);
 
-  const layoutStyle: React.CSSProperties = isNarrow
+  // responsive por ALTURA
+  const { vw, vh } = useViewport();
+  const isCompactLandscape = vh < 600 && vw > vh; // clave: poco alto y en horizontal
+
+  // estilos raíz: sin scroll
+  const rootStyle: React.CSSProperties = {
+    height: "100dvh",
+    width: "100vw",
+    overflow: "hidden",
+    background: "#0b0e12",
+    color: "#e9eef3",
+    display: "grid",
+    gridTemplateColumns: isCompactLandscape ? "1fr" : "320px 1fr",
+    gridTemplateRows: isCompactLandscape ? "1fr auto" : "1fr",
+  };
+
+  // canvas wrapper: sin barras
+  // si compacto, el canvas se ajusta debajo para no chocar con la BottomBar
+  const barH = Math.max(48, Math.min(Math.round(vh * 0.09), 64));
+  const canvasBoxStyle: React.CSSProperties = isCompactLandscape
     ? {
-        height: "100dvh",
-        width: "100vw",
         display: "grid",
-        gridTemplateRows: "48px 1fr",
-        background: "#0b0e12",
-        color: "#e9eef3",
+        placeItems: "center",
+        padding: 8,
+        overflow: "hidden",
       }
     : {
-        height: "100dvh",
-        width: "100vw",
         display: "grid",
-        gridTemplateColumns: "320px 1fr",
-        background: "#0b0e12",
-        color: "#e9eef3",
+        placeItems: "center",
+        padding: 16,
+        overflow: "hidden",
+      };
+
+  const canvasSquareStyle: React.CSSProperties = isCompactLandscape
+    ? {
+        width: `min(98vw, ${Math.max(100, vh - barH - 8)}px)`,
+        height: `min(98vw, ${Math.max(100, vh - barH - 8)}px)`,
+        maxWidth: 540,
+        maxHeight: 540,
+        display: "grid",
+        placeItems: "center",
+      }
+    : {
+        width: "min(92vw, 90vh)",
+        maxWidth: 540,
+        aspectRatio: "1 / 1",
+        display: "grid",
+        placeItems: "center",
       };
 
   return (
-    <div style={layoutStyle}>
-      {isNarrow && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            padding: "8px 12px",
-            borderBottom: "1px solid #141a22",
-            background: "#0c1218",
-            position: "sticky",
-            top: 0,
-            zIndex: 30,
-          }}
-        >
-          <button
-            onClick={() => setSidebarOpen((v) => !v)}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 8,
-              border: "1px solid #243041",
-              background: "#0a0f15",
-              color: "#e9eef3",
-              cursor: "pointer",
-            }}
-            aria-label="Abrir panel"
-          >
-            ☰ Panel
-          </button>
-          <div style={{ opacity: 0.8, fontSize: 14 }}>
-            Sala: <code>{room}</code> {connected ? "• online" : "• offline"}
-          </div>
-        </div>
-      )}
-
-      {/* Sidebar */}
-      {!isNarrow ? (
-        <Sidebar
-          room={room}
-          connected={connected}
-          color={color}
-          onColor={setColor}
-          brushSize={size}
-          onBrushSize={(n) => {
-            setSize(n);
-            api?.setBrushSize(n);
-          }}
-          mode={mode}
-          onMode={(m) => {
-            setMode(m);
-            api?.setMode(m);
-          }}
-          onClear={() => api?.clearAll()}
-          onUndo={() => api?.undo()}
-          onRedo={() => api?.redo()}
-          onSendPrompt={(text) => {
-            // Para TouchDesigner (espera type/payload)
-            (window as any).__RTC_SEND__?.({ type: "prompt", payload: text });
-            // Opcional: mantener broadcast para otros clientes web
-            (window as any).__RTC_SEND__?.({ t: "prompt", room, text });
-          }}
-          onColorsFromImage={(hexes) => {
-            if (hexes[0]) setColor(hexes[0]);
-          }}
-        />
-      ) : (
-        isSidebarOpen && (
-          <div
-            role="dialog"
-            onClick={() => setSidebarOpen(false)}
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 40,
-              background: "rgba(0,0,0,.45)",
-              display: "grid",
-              gridTemplateColumns: "min(86vw, 340px) 1fr",
-            }}
-          >
-            <div
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                height: "100%",
-                background: "#0c1218",
-                borderRight: "1px solid #141a22",
-                overflow: "auto",
-              }}
-            >
-              <Sidebar
+    <div style={rootStyle}>
+      {/* Panel / Barra */}
+      {isCompactLandscape ? (
+        // nada arriba; la BottomBar va al final del grid
+        <>
+          <div style={canvasBoxStyle}>
+            <div style={canvasSquareStyle}>
+              <DrawingCanvas
+                wsUrl={wsUrl}
                 room={room}
-                connected={connected}
                 color={color}
-                onColor={setColor}
-                brushSize={size}
-                onBrushSize={(n) => {
-                  setSize(n);
-                  api?.setBrushSize(n);
-                }}
+                size={size}
                 mode={mode}
-                onMode={(m) => {
-                  setMode(m);
-                  api?.setMode(m);
-                }}
-                onClear={() => api?.clearAll()}
-                onUndo={() => api?.undo()}
-                onRedo={() => api?.redo()}
-                onSendPrompt={(text) => {
-                  (window as any).__RTC_SEND__?.({ type: "prompt", payload: text });
-                  (window as any).__RTC_SEND__?.({ t: "prompt", room, text });
-                }}
-                onColorsFromImage={(hexes) => {
-                  if (hexes[0]) setColor(hexes[0]);
-                }}
+                onApiReady={setApi}
+                onConnectionChange={setConnected}
               />
             </div>
-            <div />
           </div>
-        )
-      )}
 
-      {/* Canvas area */}
-      <div
-        style={{
-          display: "grid",
-          placeItems: "center",
-          padding: isNarrow ? 8 : 16,
-          overflow: "auto",
-        }}
-      >
-        <div
-          style={{
-            width: "min(92vw, 90vh)",
-            maxWidth: 540,
-            aspectRatio: "1 / 1",
-            display: "grid",
-            placeItems: "center",
-          }}
-        >
-          <DrawingCanvas
-            wsUrl={wsUrl}
+          <BottomBar
+            height={barH}
             room={room}
+            connected={connected}
             color={color}
-            size={size}
+            onColor={(c) => {
+              setColor(c);
+            }}
+            brushSize={size}
+            onBrushSize={(n) => {
+              setSize(n);
+              api?.setBrushSize(n);
+            }}
             mode={mode}
-            onApiReady={setApi}
-            onConnectionChange={setConnected}
+            onMode={(m) => {
+              setMode(m);
+              api?.setMode(m);
+            }}
+            onClear={() => api?.clearAll()}
+            onUndo={() => api?.undo()}
+            onRedo={() => api?.redo()}
+            onSendPrompt={(text) => {
+              // TD
+              (window as any).__RTC_SEND__?.({ type: "prompt", payload: text });
+              // Web (opcional)
+              (window as any).__RTC_SEND__?.({ t: "prompt", room, text });
+            }}
+            onColorsFromImage={(hexes) => {
+              if (hexes[0]) setColor(hexes[0]);
+            }}
           />
-        </div>
-      </div>
+        </>
+      ) : (
+        <>
+          {/* Sidebar fijo (desktop / portrait) */}
+          <Sidebar
+            room={room}
+            connected={connected}
+            color={color}
+            onColor={setColor}
+            brushSize={size}
+            onBrushSize={(n) => {
+              setSize(n);
+              api?.setBrushSize(n);
+            }}
+            mode={mode}
+            onMode={(m) => {
+              setMode(m);
+              api?.setMode(m);
+            }}
+            onClear={() => api?.clearAll()}
+            onUndo={() => api?.undo()}
+            onRedo={() => api?.redo()}
+            onSendPrompt={(text) => {
+              (window as any).__RTC_SEND__?.({ type: "prompt", payload: text });
+              (window as any).__RTC_SEND__?.({ t: "prompt", room, text });
+            }}
+            onColorsFromImage={(hexes) => {
+              if (hexes[0]) setColor(hexes[0]);
+            }}
+          />
+
+          {/* Canvas a la derecha */}
+          <div style={canvasBoxStyle}>
+            <div style={canvasSquareStyle}>
+              <DrawingCanvas
+                wsUrl={wsUrl}
+                room={room}
+                color={color}
+                size={size}
+                mode={mode}
+                onApiReady={setApi}
+                onConnectionChange={setConnected}
+              />
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

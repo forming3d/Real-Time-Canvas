@@ -2,33 +2,40 @@ name: Mirror to MONTest-source
 
 on:
   push:
-    branches: ["**"]       # todas las ramas
+    branches: ["**"]
+    tags: ["**"]
   delete:
-    branches: ["**"]
   create:
-    branches: ["**"]
   workflow_dispatch:
-
 
 jobs:
   mirror:
     runs-on: ubuntu-latest
-    # evita bucles iniciados por el propio bot
     if: github.actor != 'github-actions[bot]'
+
     steps:
       - name: Checkout (historia completa)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0   # trae TODAS las ramas y tags
 
       - name: Config Git
         run: |
           git config user.name  "mirror-bot"
           git config user.email "mirror-bot@users.noreply.github.com"
 
+      - name: Sanity check (probar acceso)
+        env:
+          MIRROR_URL: https://MONTest-source:${{ secrets.MIRROR_PAT }}@github.com/MONTest-source/Real-Time-Canvas.git
+        run: |
+          git ls-remote "$MIRROR_URL" >/dev/null
+
       - name: Push --mirror a MONTest-source
         env:
-          MIRROR_URL: https://MONTest-source:${{ secrets.MIRROR_PAT }}@github.com/MONTest-source/REPO.git
+          MIRROR_URL: https://MONTest-source:${{ secrets.MIRROR_PAT }}@github.com/MONTest-source/Real-Time-Canvas.git
         run: |
-          # --mirror = ramas, tags y borrados
+          # Si usas Git LFS, descomenta:
+          # git lfs fetch --all || true
+          # git lfs push --all "$MIRROR_URL" || true
+
           git push --mirror "$MIRROR_URL"

@@ -330,7 +330,7 @@ export default function App() {
 
   return (
     <main className="app">
-      <img src="/logo.png" alt="Logo" className="page-logo" />
+      <img src="/public/logo.png" alt="Logo" className="page-logo" />
       <aside role="complementary" aria-label="Panel de control" className="panel">
         {/* Connection Status */}
         <div className="connection-status">

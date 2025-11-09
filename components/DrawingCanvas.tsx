@@ -6,6 +6,7 @@ type Props = {
   height: number;
   brushSize: number;
   brushColor: string;
+  brushOpacity?: number;
   eraser?: boolean;
   liveFps?: number;         // 6–10 recomendable
   liveJpegQ?: number;       // 0.4–0.6 recomendable
@@ -34,6 +35,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(({
   height,
   brushSize,
   brushColor,
+  brushOpacity = 100,
   eraser = false,
   liveFps = 8,
   liveJpegQ = 0.5,
@@ -113,7 +115,8 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(({
     ctx.globalCompositeOperation = eraser ? 'destination-out' : 'source-over';
     ctx.strokeStyle = brushColor;
     ctx.lineWidth = brushSize;
-  }, [brushColor, brushSize, eraser]);
+    ctx.globalAlpha = brushOpacity / 100;
+  }, [brushColor, brushSize, brushOpacity, eraser]);
 
   const drawLine = (x1: number, y1: number, x2: number, y2: number) => {
     const ctx = ctxRef.current;
@@ -207,7 +210,6 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(({
       if (blob && finalHandler) finalHandler(blob);
       onDrawEndRef.current?.();
     }, 'image/png');
-
   };
 
   useEffect(() => {

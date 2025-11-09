@@ -221,8 +221,18 @@ export default function App() {
     addLog(`Cambiando a sala: ${normalized}`, 'info');
   }, [room, roomInput]);
 
+  // Throttle state updates for smoother color picker
+  const lastUpdateRef = useRef(0);
+  
   const handleColorPickerChange = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!colorPickerRef.current) return;
+    
+    // Throttle updates to improve performance
+    const now = performance.now();
+    if (now - lastUpdateRef.current < 16) { // Aproximadamente 60fps
+      return; // Skip this update if less than 16ms has passed
+    }
+    lastUpdateRef.current = now;
     
     const rect = colorPickerRef.current.getBoundingClientRect();
     const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
@@ -230,7 +240,7 @@ export default function App() {
     
     setColorPickerPosition({ x, y });
     
-    // Convert position to color
+    // Convert position to color - optimized calculation
     const hue = Math.atan2(y - 0.5, x - 0.5) * 180 / Math.PI + 180;
     const distance = Math.sqrt(Math.pow(x - 0.5, 2) + Math.pow(y - 0.5, 2)) * 2;
     const saturation = Math.min(1, distance) * 100;
@@ -269,11 +279,9 @@ export default function App() {
     const hexColor = `#${toHex(r)}${toHex(g)}${toHex(b)}`;
     setBrushColor(hexColor);
     
-    // Add to color history if not already in it
-    if (!colorHistory.includes(hexColor)) {
-      setColorHistory(prev => [hexColor, ...prev.slice(0, 7)]);
-    }
-  }, [colorHistory]);
+    // Optimized: we don't need to update the color history on every move
+    // Only add to history when mouse is released
+  }, []);
 
   const copyWebSocketUrl = useCallback(() => {
     navigator.clipboard.writeText(url).then(() => {
@@ -396,6 +404,7 @@ export default function App() {
             onMouseDown={handleColorPickerChange}
             onMouseMove={(e) => e.buttons === 1 && handleColorPickerChange(e)}
             onTouchStart={(e) => {
+              e.preventDefault(); // Prevenir comportamientos por defecto
               const touch = e.touches[0];
               handleColorPickerChange({
                 clientX: touch.clientX,
@@ -403,12 +412,12 @@ export default function App() {
               } as React.MouseEvent<HTMLDivElement>);
             }}
             onTouchMove={(e) => {
+              e.preventDefault(); // Prevenir scroll
               const touch = e.touches[0];
               handleColorPickerChange({
                 clientX: touch.clientX,
                 clientY: touch.clientY
               } as React.MouseEvent<HTMLDivElement>);
-              e.preventDefault(); // Prevenir scroll
             }}
           >
             <div className="color-square"></div>

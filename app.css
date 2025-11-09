@@ -146,6 +146,8 @@ body, html, #root {
     #ff0000, #ff8000, #ffff00, #80ff00, #00ff00, #00ff80, 
     #00ffff, #0080ff, #0000ff, #8000ff, #ff00ff, #ff0080, #ff0000
   );
+  touch-action: none;
+  -ms-touch-action: none;
 }
 
 .color-square {
@@ -168,6 +170,7 @@ body, html, #root {
   transform: translate(-50%, -50%);
   pointer-events: none;
   box-shadow: 0 0 0 1px black;
+  will-change: left, top;
 }
 
 .color-display {

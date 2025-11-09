@@ -44,6 +44,32 @@ export default function App() {
   const [colorHistory, setColorHistory] = useState<string[]>(['#478792', '#3040a0', '#2050c0', '#4060e0', '#6070f0', '#8080ff', '#90a0ff', '#a0c0ff']);
   const [nextLogId, setNextLogId] = useState(1);
 
+  // Estados HSL
+  const [hue, setHue] = useState(0);        // 0..360
+  const [sat, setSat] = useState(1);        // 0..1
+  const [lum, setLum] = useState(0.5);      // 0..1
+
+  // Convierte HSL (0..360, 0..1, 0..1) a HEX
+  const hslToHex = (H: number, S: number, L: number) => {
+    const C = (1 - Math.abs(2*L - 1)) * S;
+    const X = C * (1 - Math.abs(((H/60) % 2) - 1));
+    const m = L - C/2;
+    let r=0,g=0,b=0;
+    if (0 <= H && H < 60)  { r=C; g=X; b=0; }
+    else if (60 <= H && H < 120) { r=X; g=C; b=0; }
+    else if (120 <= H && H < 180){ r=0; g=C; b=X; }
+    else if (180 <= H && H < 240){ r=0; g=X; b=C; }
+    else if (240 <= H && H < 300){ r=X; g=0; b=C; }
+    else { r=C; g=0; b=X; }
+    const toHex = (v:number)=> (Math.round((v+m)*255)).toString(16).padStart(2,'0');
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  };
+
+  // sincroniza brushColor cuando cambia H/S/L
+  useEffect(() => {
+    setBrushColor(hslToHex(hue, sat, lum));
+  }, [hue, sat, lum]);
+
   const url = useMemo(() => WS_URL(room), [room]);
   const colorPickerRef = useRef<HTMLDivElement>(null);
   const logScrollRef = useRef<HTMLDivElement>(null);
@@ -221,70 +247,37 @@ export default function App() {
     addLog(`Cambiando a sala: ${normalized}`, 'info');
   }, [room, roomInput]);
 
-  // Throttle state updates for smoother color picker
-  const lastUpdateRef = useRef(0);
-  
   const handleColorPickerChange = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!colorPickerRef.current) return;
-    
-    // Throttle updates to improve performance
-    const now = performance.now();
-    if (now - lastUpdateRef.current < 16) { // Aproximadamente 60fps
-      return; // Skip this update if less than 16ms has passed
-    }
-    lastUpdateRef.current = now;
-    
-    const rect = colorPickerRef.current.getBoundingClientRect();
+    const el = colorPickerRef.current;
+    if (!el) return;
+
+    const rect = el.getBoundingClientRect();
     const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-    
-    setColorPickerPosition({ x, y });
-    
-    // Convert position to color - fixed calculation for correct color matching
-    // Angle calculation: atan2 returns angle in radians, convert to degrees
-    const angle = Math.atan2(y - 0.5, x - 0.5) * 180 / Math.PI;
-    // Normalize to 0-360 degrees (0 = right, going counterclockwise)
-    // This is the correct mapping based on our visual color wheel
-    const hue = (angle + 180) % 360;
-    const distance = Math.sqrt(Math.pow(x - 0.5, 2) + Math.pow(y - 0.5, 2)) * 2;
-    const saturation = Math.min(1, distance) * 100;
-    const lightness = 50;
-    
-    // Convert HSL to hex
-    const h = hue / 360;
-    const s = saturation / 100;
-    const l = lightness / 100;
-    
-    let r, g, b;
-    if (s === 0) {
-      r = g = b = l;
+    setColorPickerPosition({ x, y }); // para el cursor
+
+    // Geometría
+    const cx = 0.5, cy = 0.5;
+    const dx = x - cx, dy = y - cy;
+    const r = Math.sqrt(dx*dx + dy*dy);         // 0..~0.71
+    const angleDeg = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360; // 0° a la derecha, CW
+
+    // Tamaño del cuadrado central (igual que CSS: 40% del contenedor)
+    const SQ = 0.40;
+    const left = cx - SQ/2, right = cx + SQ/2;
+    const top  = cy - SQ/2, bottom = cy + SQ/2;
+    const inSquare = (x >= left && x <= right && y >= top && y <= bottom);
+
+    if (inSquare) {
+      // Mapear S (0..1) y L (0..1) dentro del cuadrado
+      const sx = (x - left) / SQ;   // 0 izquierda (blanco) -> 1 derecha (color)
+      const ly = 1 - (y - top) / SQ; // 1 arriba (más claro) -> 0 abajo (oscuro)
+      setSat(sx);
+      setLum(ly);
     } else {
-      const hue2rgb = (p: number, q: number, t: number) => {
-        if (t < 0) t += 1;
-        if (t > 1) t -= 1;
-        if (t < 1/6) return p + (q - p) * 6 * t;
-        if (t < 1/2) return q;
-        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-        return p;
-      };
-      
-      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-      const p = 2 * l - q;
-      r = hue2rgb(p, q, h + 1/3);
-      g = hue2rgb(p, q, h);
-      b = hue2rgb(p, q, h - 1/3);
+      // Selección de hue en el anillo
+      setHue(angleDeg);
     }
-    
-    const toHex = (x: number) => {
-      const hex = Math.round(x * 255).toString(16);
-      return hex.length === 1 ? '0' + hex : hex;
-    };
-    
-    const hexColor = `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-    setBrushColor(hexColor);
-    
-    // Optimized: we don't need to update the color history on every move
-    // Only add to history when mouse is released
   }, []);
 
   const copyWebSocketUrl = useCallback(() => {
@@ -295,6 +288,105 @@ export default function App() {
     });
   }, [url]);
 
+  // K-means clustering para extraer colores dominantes
+  const extractDominantColors = useCallback((imageData: Uint8ClampedArray, k: number = 8, maxIterations: number = 10) => {
+    // Extraer todos los píxeles RGB (saltando alpha)
+    const pixels: [number, number, number][] = [];
+    for (let i = 0; i < imageData.length; i += 4) {
+      const r = imageData[i];
+      const g = imageData[i + 1];
+      const b = imageData[i + 2];
+      const alpha = imageData[i + 3];
+      
+      // Ignorar píxeles muy transparentes o muy oscuros/claros extremos
+      if (alpha > 50 && !(r < 10 && g < 10 && b < 10) && !(r > 245 && g > 245 && b > 245)) {
+        pixels.push([r, g, b]);
+      }
+    }
+    
+    if (pixels.length === 0) return [];
+    
+    // Inicializar centroides aleatoriamente
+    const centroids: [number, number, number][] = [];
+    const step = Math.floor(pixels.length / k);
+    for (let i = 0; i < k; i++) {
+      const idx = Math.min((i * step + Math.floor(step / 2)), pixels.length - 1);
+      centroids.push([...pixels[idx]]);
+    }
+    
+    // Función de distancia euclidiana
+    const distance = (a: [number, number, number], b: [number, number, number]) => {
+      return Math.sqrt(
+        Math.pow(a[0] - b[0], 2) +
+        Math.pow(a[1] - b[1], 2) +
+        Math.pow(a[2] - b[2], 2)
+      );
+    };
+    
+    // Iteraciones de k-means
+    for (let iter = 0; iter < maxIterations; iter++) {
+      // Asignar cada píxel al centroide más cercano
+      const clusters: [number, number, number][][] = Array(k).fill(null).map(() => []);
+      
+      // Muestrear para mejor rendimiento (cada 4to píxel)
+      for (let i = 0; i < pixels.length; i += 4) {
+        const pixel = pixels[i];
+        let minDist = Infinity;
+        let closestIdx = 0;
+        
+        for (let j = 0; j < k; j++) {
+          const dist = distance(pixel, centroids[j]);
+          if (dist < minDist) {
+            minDist = dist;
+            closestIdx = j;
+          }
+        }
+        
+        clusters[closestIdx].push(pixel);
+      }
+      
+      // Actualizar centroides
+      let changed = false;
+      for (let i = 0; i < k; i++) {
+        if (clusters[i].length === 0) continue;
+        
+        const newCentroid: [number, number, number] = [0, 0, 0];
+        for (const pixel of clusters[i]) {
+          newCentroid[0] += pixel[0];
+          newCentroid[1] += pixel[1];
+          newCentroid[2] += pixel[2];
+        }
+        newCentroid[0] = Math.round(newCentroid[0] / clusters[i].length);
+        newCentroid[1] = Math.round(newCentroid[1] / clusters[i].length);
+        newCentroid[2] = Math.round(newCentroid[2] / clusters[i].length);
+        
+        if (distance(newCentroid, centroids[i]) > 1) {
+          changed = true;
+        }
+        centroids[i] = newCentroid;
+      }
+      
+      // Converger si no hay cambios significativos
+      if (!changed) break;
+    }
+    
+    // Convertir centroides a hex y ordenar por saturación/luminancia
+    const colors = centroids
+      .filter(c => c[0] !== undefined)
+      .map(([r, g, b]) => {
+        const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+        // Calcular saturación para ordenar
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const saturation = max === 0 ? 0 : (max - min) / max;
+        return { hex, saturation };
+      })
+      .sort((a, b) => b.saturation - a.saturation) // Más saturados primero
+      .map(c => c.hex);
+    
+    return colors;
+  }, []);
+
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -303,42 +395,32 @@ export default function App() {
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
-        // Create canvas to extract colors
+        // Crear canvas para extraer colores
         const canvas = document.createElement('canvas');
-        const size = 100; // small size for sampling
+        const size = 150; // Tamaño mayor para mejor muestreo
         canvas.width = size;
         canvas.height = size;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
         
         ctx.drawImage(img, 0, 0, size, size);
-        const imageData = ctx.getImageData(0, 0, size, size).data;
+        const imageData = ctx.getImageData(0, 0, size, size);
         
-        // Sample colors from different parts of the image
-        const samplePositions = [
-          { x: size * 0.2, y: size * 0.2 },
-          { x: size * 0.8, y: size * 0.2 },
-          { x: size * 0.5, y: size * 0.5 },
-          { x: size * 0.2, y: size * 0.8 },
-          { x: size * 0.8, y: size * 0.8 },
-        ];
+        // Extraer colores dominantes con k-means
+        addLog('Analizando imagen con k-means...', 'info');
+        const colors = extractDominantColors(imageData.data, 12); // Extraer 12 colores
         
-        const colors = samplePositions.map(pos => {
-          const i = (Math.floor(pos.y) * size + Math.floor(pos.x)) * 4;
-          const r = imageData[i];
-          const g = imageData[i + 1];
-          const b = imageData[i + 2];
-          return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-        });
-        
-        // Update color history
-        setColorHistory(colors);
-        addLog('Paleta de colores extraída de la imagen', 'success');
+        if (colors.length > 0) {
+          setColorHistory(colors);
+          addLog(`Paleta de ${colors.length} colores dominantes extraída`, 'success');
+        } else {
+          addLog('No se pudieron extraer colores de la imagen', 'error');
+        }
       };
       img.src = event.target?.result as string;
     };
     reader.readAsDataURL(file);
-  }, []);
+  }, [extractDominantColors, addLog]);
 
   return (
     <main className="app">
@@ -405,33 +487,26 @@ export default function App() {
           <div 
             className="color-picker" 
             ref={colorPickerRef}
+            style={{ ['--picker-hue' as any]: hue }}
             onMouseDown={handleColorPickerChange}
             onMouseMove={(e) => e.buttons === 1 && handleColorPickerChange(e)}
             onTouchStart={(e) => {
-              e.preventDefault(); // Prevenir comportamientos por defecto
-              const touch = e.touches[0];
-              handleColorPickerChange({
-                clientX: touch.clientX,
-                clientY: touch.clientY
-              } as React.MouseEvent<HTMLDivElement>);
+              const t = e.touches[0];
+              handleColorPickerChange({ clientX: t.clientX, clientY: t.clientY } as any);
             }}
             onTouchMove={(e) => {
-              e.preventDefault(); // Prevenir scroll
-              const touch = e.touches[0];
-              handleColorPickerChange({
-                clientX: touch.clientX,
-                clientY: touch.clientY
-              } as React.MouseEvent<HTMLDivElement>);
+              const t = e.touches[0];
+              handleColorPickerChange({ clientX: t.clientX, clientY: t.clientY } as any);
             }}
           >
-            <div className="color-square"></div>
+            <div className="color-square" />
             <div 
               className="color-cursor" 
               style={{ 
                 left: `${colorPickerPosition.x * 100}%`, 
                 top: `${colorPickerPosition.y * 100}%` 
               }}
-            ></div>
+            />
           </div>
           <div className="color-display">
             <div className="color-preview" style={{ backgroundColor: brushColor }}></div>
@@ -453,6 +528,21 @@ export default function App() {
               />
             )}
           </div>
+          
+          {showPalettePanel && colorHistory.length > 0 && (
+            <div className="palette">
+              {colorHistory.map((c, i) => (
+                <button
+                  key={`${c}-${i}`}
+                  className="swatch"
+                  style={{ backgroundColor: c }}
+                  onClick={() => setBrushColor(c)}
+                  aria-label={`Seleccionar color ${c}`}
+                  title={c}
+                />
+              ))}
+            </div>
+          )}
         </div>
         
         {/* Brush Controls */}

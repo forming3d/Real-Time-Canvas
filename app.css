@@ -143,23 +143,25 @@ body, html, #root {
   max-width: 200px;
   margin: 0 auto;
   border-radius: 50%;
-  /* Definir el gradiente correctamente para coincidir con el cálculo del código */
+  /* anillo HUE (clockwise, 0deg a la derecha) */
   background-image: conic-gradient(from 0deg at 50% 50%,
-    red, orange, yellow, lime, green, cyan, 
-    blue, indigo, violet, magenta, red);
-  -ms-touch-action: none;
+    red, orange, yellow, lime, green, cyan, blue, indigo, violet, magenta, red);
   touch-action: none;
 }
 
+/* El cuadrado ahora combina:
+   - base: hsl(H,100%,50%) con H desde JS (var --picker-hue)
+   - overlay derecha: quita blanco (saturación)
+   - overlay abajo: añade negro (luminancia) */
 .color-square {
   position: absolute;
-  top: 50%;
-  left: 50%;
+  top: 50%; left: 50%;
   transform: translate(-50%, -50%);
-  width: 40%;
-  height: 40%;
-  background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(0,0,0,1)),
-              linear-gradient(to right, rgba(255,255,255,1), rgba(255,255,255,0));
+  width: 40%; height: 40%;
+  background:
+    linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,1)),
+    linear-gradient(to right, rgba(255,255,255,1), rgba(255,255,255,0)),
+    hsl(var(--picker-hue) 100% 50%);
 }
 
 .color-cursor {
@@ -296,6 +298,25 @@ body, html, #root {
   text-align: center;
 }
 
+.palette {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.swatch {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.swatch:focus-visible { 
+  outline: 2px solid #7c3aed; 
+  outline-offset: 2px; 
+}
+
 .stage {
   display: grid;
   place-items: center;
@@ -326,13 +347,12 @@ body, html, #root {
   background-color: #1a1a1a;
 }
 
+/* Default (desktop) */
 .page-logo {
   position: absolute;
-  right: 10px;
-  bottom: 10px;
-  width: 100px;
-  height: 100px;
-  opacity: 0.6;
+  right: 10px; bottom: 10px;
+  width: 100px; height: 100px;
+  opacity: .6;
   pointer-events: none;
   z-index: 10;
 }
@@ -347,23 +367,24 @@ body, html, #root {
 }
 
 .log-container.expanded {
-  max-height: 200px;
-  border-top: 1px solid #2a2a2a;
+  max-height: 40vh;
   display: block;
-  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.4);
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  left: 0; right: 0; bottom: 0;
+  z-index: 9999;
   background: #121212;
+  border-top: 1px solid #2a2a2a;
+  box-shadow: 0 -4px 12px rgba(0,0,0,.4);
+  padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
 .log-window {
   padding: 12px 16px;
-  height: 150px;
+  height: min(32vh, 220px);
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   background: #1a1a1a;
-  font-family: monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
 }
 
@@ -460,15 +481,9 @@ input[type="range"]::-moz-range-thumb {
   .app {
     grid-template-columns: 280px 1fr;
   }
-  
-  .page-logo {
-    width: 30px;
-    height: 30px;
-    right: 8px;
-    bottom: 8px;
-  }
 }
 
+/* Tablet ≤ 960px: MÁS grande */
 @media (max-width: 960px) {
   .app {
     grid-template-columns: 1fr;
@@ -496,10 +511,11 @@ input[type="range"]::-moz-range-thumb {
     width: min(100%, 512px);
   }
   
-  .page-logo {
-    position: fixed;
-    right: 10px;
-    bottom: 10px;
+  .page-logo { 
+    width: 120px; 
+    height: 120px; 
+    right: 8px; 
+    bottom: 8px; 
   }
 
   @supports (height: 100dvh) {
@@ -545,8 +561,16 @@ input[type="range"]::-moz-range-thumb {
   }
 }
 
+/* Móvil ≤ 600px: aún visible y grande */
 @media (max-width: 600px) {
   .panel {
     max-height: 60vh;
+  }
+  
+  .page-logo { 
+    width: 100px; 
+    height: 100px; 
+    right: 8px; 
+    bottom: 8px; 
   }
 }

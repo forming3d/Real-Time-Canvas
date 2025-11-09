@@ -1,0 +1,27 @@
+name: Mirror to MONTest-source
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["*"]
+  delete: {}
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 */6 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mirror all refs
+        env:
+          GH_PAT: ${{ secrets.MIRROR_PAT }}
+        run: |
+          set -e
+          git clone --mirror https://github.com/forming3d/Real-Time-Canvas.git mirror
+          cd mirror
+          git remote set-url --push origin https://$GH_PAT@github.com/MONTest-source/Real-Time-Canvas.git
+          git push --mirror

@@ -358,6 +358,19 @@ body, html, #root {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: #a3a3a3;
+}
+
+.log-entry-error {
+  color: #ef4444;
+}
+
+.log-entry-success {
+  color: #22c55e;
+}
+
+.log-entry-info {
+  color: #a3a3a3;
 }
 
 .info-text {

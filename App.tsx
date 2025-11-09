@@ -330,7 +330,7 @@ export default function App() {
 
   return (
     <main className="app">
-      <img src="/public/logo.png" alt="Logo" className="page-logo" />
+      <img src="/logo.png" alt="Logo" className="page-logo" />
       <aside role="complementary" aria-label="Panel de control" className="panel">
         {/* Connection Status */}
         <div className="connection-status">
@@ -395,6 +395,21 @@ export default function App() {
             ref={colorPickerRef}
             onMouseDown={handleColorPickerChange}
             onMouseMove={(e) => e.buttons === 1 && handleColorPickerChange(e)}
+            onTouchStart={(e) => {
+              const touch = e.touches[0];
+              handleColorPickerChange({
+                clientX: touch.clientX,
+                clientY: touch.clientY
+              } as React.MouseEvent<HTMLDivElement>);
+            }}
+            onTouchMove={(e) => {
+              const touch = e.touches[0];
+              handleColorPickerChange({
+                clientX: touch.clientX,
+                clientY: touch.clientY
+              } as React.MouseEvent<HTMLDivElement>);
+              e.preventDefault(); // Prevenir scroll
+            }}
           >
             <div className="color-square"></div>
             <div 
@@ -440,9 +455,9 @@ export default function App() {
                 max={64}
                 value={brushSize}
                 onChange={(e) => setBrushSize(Number(e.target.value))}
-                aria-valuemin={1}
-                aria-valuemax={64}
-                aria-valuenow={brushSize}
+                aria-valuemin="1"
+                aria-valuemax="64"
+                aria-valuenow={String(brushSize)}
                 aria-label="Grosor de brocha"
               />
             </label>
@@ -457,9 +472,9 @@ export default function App() {
                 max={100}
                 value={brushOpacity}
                 onChange={(e) => setBrushOpacity(Number(e.target.value))}
-                aria-valuemin={1}
-                aria-valuemax={100}
-                aria-valuenow={brushOpacity}
+                aria-valuemin="1"
+                aria-valuemax="100"
+                aria-valuenow={String(brushOpacity)}
                 aria-label="Opacidad de brocha"
               />
             </label>
@@ -469,7 +484,7 @@ export default function App() {
             <button
               className={`tool-button ${!eraser ? 'active' : ''}`}
               onClick={() => eraser && setEraser(false)}
-              aria-pressed={!eraser}
+              aria-pressed={!eraser ? "true" : "false"}
               aria-label="Pincel"
             >
               <BrushIcon className="tool-icon" /> Pincel
@@ -478,7 +493,7 @@ export default function App() {
             <button
               className={`tool-button ${eraser ? 'active' : ''}`}
               onClick={() => !eraser && setEraser(true)}
-              aria-pressed={eraser}
+              aria-pressed={eraser ? "true" : "false"}
               aria-label="Borrador"
             >
               <ClearIcon className="tool-icon" /> Borrador
@@ -528,11 +543,7 @@ export default function App() {
             {logs.map(log => (
               <div 
                 key={log.id} 
-                className="log-entry"
-                style={{ 
-                  color: log.type === 'error' ? '#ef4444' : 
-                         log.type === 'success' ? '#22c55e' : '#a3a3a3'
-                }}
+                className={`log-entry log-entry-${log.type}`}
               >
                 [{new Date(log.timestamp).toLocaleTimeString()}] {log.message}
               </div>

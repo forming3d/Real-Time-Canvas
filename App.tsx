@@ -240,11 +240,12 @@ export default function App() {
     
     setColorPickerPosition({ x, y });
     
-    // Convert position to color - corrected calculation
+    // Convert position to color - fixed calculation for correct color matching
     // Angle calculation: atan2 returns angle in radians, convert to degrees
     const angle = Math.atan2(y - 0.5, x - 0.5) * 180 / Math.PI;
     // Normalize to 0-360 degrees (0 = right, going counterclockwise)
-    const hue = (angle + 270) % 360;
+    // Adding 90 instead of 270 fixes the color mapping
+    const hue = (angle + 90) % 360;
     const distance = Math.sqrt(Math.pow(x - 0.5, 2) + Math.pow(y - 0.5, 2)) * 2;
     const saturation = Math.min(1, distance) * 100;
     const lightness = 50;

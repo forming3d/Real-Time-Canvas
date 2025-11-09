@@ -147,8 +147,8 @@ body, html, #root {
     #ff0000, #ff8000, #ffff00, #80ff00, #00ff00, #00ff80, 
     #00ffff, #0080ff, #0000ff, #8000ff, #ff00ff, #ff0080, #ff0000
   );
-  /* Definir punto de inicio a las 3 en punto (0 grados) */
-  background-image: conic-gradient(from 0deg at 50% 50%,
+  /* Definir punto de inicio desde arriba (270 grados) para coincidir con el cálculo */
+  background-image: conic-gradient(from 270deg at 50% 50%,
     red, orange, yellow, lime, green, cyan, 
     blue, indigo, violet, magenta, red);
   touch-action: none;
@@ -352,6 +352,7 @@ body, html, #root {
   max-height: 200px;
   border-top: 1px solid #2a2a2a;
   display: block;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .log-window {
@@ -547,15 +548,17 @@ input[type="range"]::-moz-range-thumb {
   }
   
   .log-container.expanded {
-    position: absolute;
+    position: fixed;
     left: 0;
     right: 0;
     bottom: 0;
     background: #121212;
     border: 1px solid #2a2a2a;
-    z-index: 200;
+    border-radius: 8px 8px 0 0;
+    z-index: 1000;
     max-height: none;
     height: auto;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.6);
   }
   
   .log-window {

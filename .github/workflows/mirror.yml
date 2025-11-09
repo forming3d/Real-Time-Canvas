@@ -14,28 +14,33 @@ jobs:
     if: github.actor != 'github-actions[bot]'
 
     steps:
-      - name: Checkout (historia completa)
+      - name: Checkout (historia completa, sin token persistente)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # trae TODAS las ramas y tags
+          fetch-depth: 0
+          persist-credentials: false   # <- clave para que no se use github-actions[bot]
+      # (persist-credentials:false recomendado por el equipo de checkout) :contentReference[oaicite:1]{index=1}
+
+      - name: Limpia header de auth del checkout (defensivo)
+        run: git config --global --unset-all http.https://github.com/.extraheader || true
+        # (esa extraheader es la que inyecta el token del checkout) :contentReference[oaicite:2]{index=2}
 
       - name: Config Git
         run: |
           git config user.name  "mirror-bot"
           git config user.email "mirror-bot@users.noreply.github.com"
 
-      - name: Sanity check (probar acceso)
+      - name: Sanity check (ls-remote con PAT)
         env:
           MIRROR_URL: https://MONTest-source:${{ secrets.MIRROR_PAT }}@github.com/MONTest-source/Real-Time-Canvas.git
-        run: |
-          git ls-remote "$MIRROR_URL" >/dev/null
+        run: git ls-remote "$MIRROR_URL" >/dev/null
 
       - name: Push --mirror a MONTest-source
         env:
           MIRROR_URL: https://MONTest-source:${{ secrets.MIRROR_PAT }}@github.com/MONTest-source/Real-Time-Canvas.git
         run: |
-          # Si usas Git LFS, descomenta:
+          # Si usas Git LFS, descomenta estas dos líneas:
           # git lfs fetch --all || true
           # git lfs push --all "$MIRROR_URL" || true
-
-          git push --mirror "$MIRROR_URL"
+          git remote add mirror "$MIRROR_URL"
+          git push --mirror mirror

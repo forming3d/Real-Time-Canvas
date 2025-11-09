@@ -4,9 +4,145 @@ import { DrawingCanvas } from './components/DrawingCanvas';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useHistory } from './hooks/useHistory';
 import {
-  ChevronDownIcon, ChevronUpIcon, UndoIcon, RedoIcon, SendIcon,
-  BrushIcon, ClearIcon, ConnectIcon, DisconnectIcon
+  ChevronDownIcon,
+  ChevronUpIcon,
+  UndoIcon,
+  RedoIcon,
+  SendIcon,
+  BrushIcon,
+  ClearIcon,
 } from './components/icons';
+
+type HSL = {
+  hue: number;
+  saturation: number;
+  lightness: number;
+};
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+const normalizeHex = (input: string): string | null => {
+  if (!input) return null;
+  let value = input.trim().replace(/^#/, '').toLowerCase();
+  if (!/^[0-9a-f]{3}$/.test(value) && !/^[0-9a-f]{6}$/.test(value)) return null;
+  if (value.length === 3) {
+    value = value
+      .split('')
+      .map((ch) => ch + ch)
+      .join('');
+  }
+  return `#${value.toUpperCase()}`;
+};
+
+const hexToHSL = (hex: string): HSL => {
+  const normalized = normalizeHex(hex) ?? '#000000';
+  const value = normalized.replace('#', '');
+  const r = parseInt(value.slice(0, 2), 16) / 255;
+  const g = parseInt(value.slice(2, 4), 16) / 255;
+  const b = parseInt(value.slice(4, 6), 16) / 255;
+
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let hue = 0;
+  let saturation = 0;
+  const lightness = (max + min) / 2;
+
+  if (max !== min) {
+    const delta = max - min;
+    saturation = lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+    switch (max) {
+      case r:
+        hue = (g - b) / delta + (g < b ? 6 : 0);
+        break;
+      case g:
+        hue = (b - r) / delta + 2;
+        break;
+      case b:
+        hue = (r - g) / delta + 4;
+        break;
+    }
+    hue /= 6;
+  }
+
+  return {
+    hue: Math.round(hue * 360),
+    saturation: Math.round(saturation * 100),
+    lightness: Math.round(lightness * 100),
+  };
+};
+
+const hslToHex = (h: number, s: number, l: number): string => {
+  const hue = ((h % 360) + 360) % 360;
+  const saturation = clamp(s, 0, 100) / 100;
+  const lightness = clamp(l, 0, 100) / 100;
+
+  if (saturation === 0) {
+    const component = Math.round(lightness * 255)
+      .toString(16)
+      .padStart(2, '0')
+      .toUpperCase();
+    return `#${component}${component}${component}`;
+  }
+
+  const hue2rgb = (p: number, q: number, t: number) => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+
+  const q =
+    lightness < 0.5
+      ? lightness * (1 + saturation)
+      : lightness + saturation - lightness * saturation;
+  const p = 2 * lightness - q;
+  const r = hue2rgb(p, q, hue / 360 + 1 / 3);
+  const g = hue2rgb(p, q, hue / 360);
+  const b = hue2rgb(p, q, hue / 360 - 1 / 3);
+
+  const toHex = (value: number) =>
+    Math.round(value * 255)
+      .toString(16)
+      .padStart(2, '0')
+      .toUpperCase();
+
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+};
+
+const hslToPickerPosition = (h: number, s: number) => {
+  const angle = (h * Math.PI) / 180;
+  const radius = clamp(s / 100, 0, 1) * 0.5;
+  const x = clamp(0.5 + radius * Math.cos(angle), 0, 1);
+  const y = clamp(0.5 - radius * Math.sin(angle), 0, 1);
+  return { x, y };
+};
+
+const INITIAL_COLOR_HEX = '#478792';
+const INITIAL_COLOR_HSL = hexToHSL(INITIAL_COLOR_HEX);
+const INITIAL_PICKER_POSITION = hslToPickerPosition(
+  INITIAL_COLOR_HSL.hue,
+  INITIAL_COLOR_HSL.saturation
+);
+
+const DEFAULT_HISTORY = Array.from(
+  new Set(
+    [
+      INITIAL_COLOR_HEX,
+      '#3040A0',
+      '#2050C0',
+      '#4060E0',
+      '#6070F0',
+      '#8080FF',
+      '#90A0FF',
+      '#A0C0FF',
+    ]
+      .map((color) => normalizeHex(color))
+      .filter((color): color is string => Boolean(color))
+  )
+);
 
 const randomRoomId = () => Math.random().toString(36).slice(2, 8).toUpperCase();
 
@@ -30,23 +166,28 @@ export default function App() {
   const initialRoom = useMemo(() => randomRoomId(), []);
   const [room, setRoom] = useState(initialRoom);
   const [roomInput, setRoomInput] = useState(initialRoom);
-  const [brushColor, setBrushColor] = useState('#478792');
+  const [brushColor, setBrushColor] = useState(INITIAL_COLOR_HEX);
+  const [colorHSL, setColorHSL] = useState<HSL>(INITIAL_COLOR_HSL);
+  const [hexInputValue, setHexInputValue] = useState(INITIAL_COLOR_HEX.toUpperCase());
   const [brushSize, setBrushSize] = useState(10);
   const [brushOpacity, setBrushOpacity] = useState(100);
   const [eraser, setEraser] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [canvasSize, setCanvasSize] = useState(512);
-  const [colorPickerPosition, setColorPickerPosition] = useState({ x: 0, y: 0 });
+  const [colorPickerPosition, setColorPickerPosition] = useState(INITIAL_PICKER_POSITION);
   const [showRoomPanel, setShowRoomPanel] = useState(false);
   const [showPalettePanel, setShowPalettePanel] = useState(false);
   const [showLogPanel, setShowLogPanel] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [colorHistory, setColorHistory] = useState<string[]>(['#478792', '#3040a0', '#2050c0', '#4060e0', '#6070f0', '#8080ff', '#90a0ff', '#a0c0ff']);
+  const [colorHistory, setColorHistory] = useState<string[]>(
+    () => Array.from(new Set(DEFAULT_HISTORY as string[]))
+  );
   const [nextLogId, setNextLogId] = useState(1);
 
   const url = useMemo(() => WS_URL(room), [room]);
   const colorPickerRef = useRef<HTMLDivElement>(null);
   const logScrollRef = useRef<HTMLDivElement>(null);
+  const colorPointerActiveRef = useRef(false);
   
   const { state: canvasHistoryState, setState: setCanvasHistoryState, undo, redo, canUndo, canRedo } = 
     useHistory<CanvasHistoryState | null>(null);
@@ -77,14 +218,42 @@ export default function App() {
   const stageRef = useRef<HTMLElement | null>(null);
 
   const addLog = useCallback((message: string, type: 'info' | 'error' | 'success' = 'info') => {
-    setLogs(prev => [...prev, {
-      id: nextLogId,
-      message,
-      type,
-      timestamp: Date.now()
-    }]);
-    setNextLogId(prev => prev + 1);
+    setLogs((prev) => [
+      ...prev,
+      {
+        id: nextLogId,
+        message,
+        type,
+        timestamp: Date.now(),
+      },
+    ]);
+    setNextLogId((prev) => prev + 1);
   }, [nextLogId]);
+
+  const commitHexInput = useCallback(() => {
+    if (!hexInputValue) {
+      setHexInputValue(brushColor.toUpperCase());
+      return;
+    }
+    const normalized = updateColorFromHex(hexInputValue, { addToHistory: true });
+    if (!normalized) {
+      setHexInputValue(brushColor.toUpperCase());
+      addLog('Formato de color inválido. Usa valores como #AABBCC.', 'error');
+    }
+  }, [addLog, brushColor, hexInputValue, updateColorFromHex]);
+
+  const handleHexInputKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        commitHexInput();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        setHexInputValue(brushColor.toUpperCase());
+      }
+    },
+    [brushColor, commitHexInput]
+  );
 
   // Scroll logs to bottom when new logs are added
   useEffect(() => {
@@ -221,70 +390,195 @@ export default function App() {
     addLog(`Cambiando a sala: ${normalized}`, 'info');
   }, [room, roomInput]);
 
-  // Throttle state updates for smoother color picker
-  const lastUpdateRef = useRef(0);
-  
-  const handleColorPickerChange = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!colorPickerRef.current) return;
-    
-    // Throttle updates to improve performance
-    const now = performance.now();
-    if (now - lastUpdateRef.current < 16) { // Aproximadamente 60fps
-      return; // Skip this update if less than 16ms has passed
-    }
-    lastUpdateRef.current = now;
-    
-    const rect = colorPickerRef.current.getBoundingClientRect();
-    const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-    
-    setColorPickerPosition({ x, y });
-    
-    // Convert position to color - fixed calculation for correct color matching
-    // Angle calculation: atan2 returns angle in radians, convert to degrees
-    const angle = Math.atan2(y - 0.5, x - 0.5) * 180 / Math.PI;
-    // Normalize to 0-360 degrees (0 = right, going counterclockwise)
-    // This is the correct mapping based on our visual color wheel
-    const hue = (angle + 180) % 360;
-    const distance = Math.sqrt(Math.pow(x - 0.5, 2) + Math.pow(y - 0.5, 2)) * 2;
-    const saturation = Math.min(1, distance) * 100;
-    const lightness = 50;
-    
-    // Convert HSL to hex
-    const h = hue / 360;
-    const s = saturation / 100;
-    const l = lightness / 100;
-    
-    let r, g, b;
-    if (s === 0) {
-      r = g = b = l;
-    } else {
-      const hue2rgb = (p: number, q: number, t: number) => {
-        if (t < 0) t += 1;
-        if (t > 1) t -= 1;
-        if (t < 1/6) return p + (q - p) * 6 * t;
-        if (t < 1/2) return q;
-        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-        return p;
-      };
-      
-      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-      const p = 2 * l - q;
-      r = hue2rgb(p, q, h + 1/3);
-      g = hue2rgb(p, q, h);
-      b = hue2rgb(p, q, h - 1/3);
-    }
-    
-    const toHex = (x: number) => {
-      const hex = Math.round(x * 255).toString(16);
-      return hex.length === 1 ? '0' + hex : hex;
-    };
-    
-    const hexColor = `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-    setBrushColor(hexColor);
-    
-    // Optimized: we don't need to update the color history on every move
-    // Only add to history when mouse is released
+  const lastPointerUpdateRef = useRef(0);
+
+  const pushColorToHistory = useCallback((hex: string) => {
+    const normalized = normalizeHex(hex);
+    if (!normalized) return;
+    setColorHistory((prev) => {
+      const filtered = prev.filter((color) => color !== normalized);
+      return [normalized, ...filtered].slice(0, 12);
+    });
+  }, []);
+
+  const updateColorFromHSL = useCallback(
+    (
+      hue: number,
+      saturation: number,
+      lightness: number,
+      options: { updatePosition?: boolean; addToHistory?: boolean } = {}
+    ) => {
+      const safeHue = ((hue % 360) + 360) % 360;
+      const safeSaturation = clamp(saturation, 0, 100);
+      const safeLightness = clamp(lightness, 0, 100);
+
+      setColorHSL({ hue: safeHue, saturation: safeSaturation, lightness: safeLightness });
+      const hex = hslToHex(safeHue, safeSaturation, safeLightness);
+      setBrushColor(hex);
+      setHexInputValue(hex.toUpperCase());
+
+      if (options.updatePosition !== false) {
+        setColorPickerPosition(hslToPickerPosition(safeHue, safeSaturation));
+      }
+
+      if (options.addToHistory) {
+        pushColorToHistory(hex);
+      }
+
+      return hex;
+    },
+    [pushColorToHistory]
+  );
+
+  const updateColorFromHex = useCallback(
+    (value: string, options: { addToHistory?: boolean; updatePosition?: boolean } = {}) => {
+      const normalized = normalizeHex(value);
+      if (!normalized) return null;
+      const hsl = hexToHSL(normalized);
+      updateColorFromHSL(hsl.hue, hsl.saturation, hsl.lightness, options);
+      return normalized;
+    },
+    [updateColorFromHSL]
+  );
+
+  const handleColorPointer = useCallback(
+    (clientX: number, clientY: number, commit = false) => {
+      const rect = colorPickerRef.current?.getBoundingClientRect();
+      if (!rect) return null;
+
+      const now = performance.now();
+      if (!commit && now - lastPointerUpdateRef.current < 16) {
+        return null;
+      }
+      lastPointerUpdateRef.current = now;
+
+      const x = clamp((clientX - rect.left) / rect.width, 0, 1);
+      const y = clamp((clientY - rect.top) / rect.height, 0, 1);
+      const dx = x - 0.5;
+      const dy = 0.5 - y;
+      const angle = Math.atan2(dy, dx);
+      const hue = (angle * 180) / Math.PI;
+      const radius = Math.min(0.5, Math.sqrt(dx * dx + dy * dy));
+      const saturation = clamp((radius / 0.5) * 100, 0, 100);
+
+      setColorPickerPosition({ x, y });
+      const hex = updateColorFromHSL(hue, saturation, colorHSL.lightness, {
+        updatePosition: false,
+      });
+
+      if (commit && hex) {
+        pushColorToHistory(hex);
+      }
+
+      return hex;
+    },
+    [colorHSL.lightness, pushColorToHistory, updateColorFromHSL]
+  );
+
+  const handleColorPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      colorPointerActiveRef.current = true;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      handleColorPointer(event.clientX, event.clientY);
+    },
+    [handleColorPointer]
+  );
+
+  const handleColorPointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!colorPointerActiveRef.current) return;
+      handleColorPointer(event.clientX, event.clientY);
+    },
+    [handleColorPointer]
+  );
+
+  const handleColorPointerUp = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!colorPointerActiveRef.current) return;
+      colorPointerActiveRef.current = false;
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        // ignored
+      }
+      handleColorPointer(event.clientX, event.clientY, true);
+    },
+    [handleColorPointer]
+  );
+
+  const handleColorPointerCancel = useCallback(() => {
+    colorPointerActiveRef.current = false;
+  }, []);
+
+  const handleColorKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      const stepHue = 5;
+      const stepSaturation = 5;
+      switch (event.key) {
+        case 'ArrowRight':
+          event.preventDefault();
+          updateColorFromHSL(colorHSL.hue + stepHue, colorHSL.saturation, colorHSL.lightness, {
+            addToHistory: false,
+          });
+          break;
+        case 'ArrowLeft':
+          event.preventDefault();
+          updateColorFromHSL(colorHSL.hue - stepHue, colorHSL.saturation, colorHSL.lightness, {
+            addToHistory: false,
+          });
+          break;
+        case 'ArrowUp':
+          event.preventDefault();
+          updateColorFromHSL(
+            colorHSL.hue,
+            clamp(colorHSL.saturation + stepSaturation, 0, 100),
+            colorHSL.lightness,
+            { addToHistory: false }
+          );
+          break;
+        case 'ArrowDown':
+          event.preventDefault();
+          updateColorFromHSL(
+            colorHSL.hue,
+            clamp(colorHSL.saturation - stepSaturation, 0, 100),
+            colorHSL.lightness,
+            { addToHistory: false }
+          );
+          break;
+        case 'Enter':
+          event.preventDefault();
+          pushColorToHistory(brushColor);
+          break;
+        default:
+          break;
+      }
+    },
+    [
+      brushColor,
+      colorHSL.hue,
+      colorHSL.lightness,
+      colorHSL.saturation,
+      pushColorToHistory,
+      updateColorFromHSL,
+    ]
+  );
+
+  const handleLightnessInput = useCallback(
+    (value: number) => {
+      updateColorFromHSL(colorHSL.hue, colorHSL.saturation, value, {
+        updatePosition: false,
+      });
+    },
+    [colorHSL.hue, colorHSL.saturation, updateColorFromHSL]
+  );
+
+  const commitLightnessInput = useCallback(() => {
+    pushColorToHistory(brushColor);
+  }, [brushColor, pushColorToHistory]);
+
+  const handleHexInputChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setHexInputValue(event.target.value.toUpperCase());
   }, []);
 
   const copyWebSocketUrl = useCallback(() => {
@@ -331,8 +625,21 @@ export default function App() {
           return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
         });
         
-        // Update color history
-        setColorHistory(colors);
+        const sanitizedColors = colors
+          .map((color) => normalizeHex(color))
+          .filter((color): color is string => Boolean(color));
+
+        if (sanitizedColors.length) {
+          setColorHistory((prev) => {
+            const merged = [...sanitizedColors, ...prev];
+            const unique = merged.filter(
+              (color, index) => merged.indexOf(color) === index
+            );
+            return unique.slice(0, 12);
+          });
+          updateColorFromHex(sanitizedColors[0], { addToHistory: false });
+        }
+
         addLog('Paleta de colores extraída de la imagen', 'success');
       };
       img.src = event.target?.result as string;
@@ -401,44 +708,109 @@ export default function App() {
         
         {/* Color Section */}
         <div className="color-section">
-          <h3>Color</h3>
-          <div 
-            className="color-picker" 
+          <h3 id="color-section-heading">Color</h3>
+          <div
+            className="color-picker"
             ref={colorPickerRef}
-            onMouseDown={handleColorPickerChange}
-            onMouseMove={(e) => e.buttons === 1 && handleColorPickerChange(e)}
-            onTouchStart={(e) => {
-              e.preventDefault(); // Prevenir comportamientos por defecto
-              const touch = e.touches[0];
-              handleColorPickerChange({
-                clientX: touch.clientX,
-                clientY: touch.clientY
-              } as React.MouseEvent<HTMLDivElement>);
-            }}
-            onTouchMove={(e) => {
-              e.preventDefault(); // Prevenir scroll
-              const touch = e.touches[0];
-              handleColorPickerChange({
-                clientX: touch.clientX,
-                clientY: touch.clientY
-              } as React.MouseEvent<HTMLDivElement>);
-            }}
+            role="application"
+            aria-labelledby="color-section-heading"
+            aria-roledescription="Selector de matiz y saturación"
+            tabIndex={0}
+            onPointerDown={handleColorPointerDown}
+            onPointerMove={handleColorPointerMove}
+            onPointerUp={handleColorPointerUp}
+            onPointerCancel={handleColorPointerCancel}
+            onPointerLeave={handleColorPointerCancel}
+            onKeyDown={handleColorKeyDown}
           >
-            <div className="color-square"></div>
-            <div 
-              className="color-cursor" 
-              style={{ 
-                left: `${colorPickerPosition.x * 100}%`, 
-                top: `${colorPickerPosition.y * 100}%` 
+            <div
+              className="color-cursor"
+              style={{
+                left: `${colorPickerPosition.x * 100}%`,
+                top: `${colorPickerPosition.y * 100}%`,
               }}
-            ></div>
+            />
           </div>
-          <div className="color-display">
-            <div className="color-preview" style={{ backgroundColor: brushColor }}></div>
-            <span className="color-value">{brushColor}</span>
+          <div className="color-display" role="group" aria-labelledby="color-display-label">
+            <span id="color-display-label" className="sr-only">
+              Color seleccionado actualmente
+            </span>
+            <div className="color-preview" style={{ backgroundColor: brushColor }} aria-hidden="true"></div>
+            <div className="color-code">
+              <label className="sr-only" htmlFor="color-hex-input">
+                Editar color en formato hexadecimal
+              </label>
+              <input
+                id="color-hex-input"
+                className="color-hex-input"
+                value={hexInputValue}
+                onChange={handleHexInputChange}
+                onBlur={commitHexInput}
+                onKeyDown={handleHexInputKeyDown}
+                aria-label="Código hexadecimal del color"
+                spellCheck={false}
+              />
+              <span className="color-value" aria-live="polite">
+                {brushColor}
+              </span>
+            </div>
+            <label className="sr-only" htmlFor="color-native-input">
+              Selector de color del sistema
+            </label>
+            <input
+              id="color-native-input"
+              className="color-native-input"
+              type="color"
+              value={brushColor}
+              onChange={(event) =>
+                updateColorFromHex(event.target.value, { addToHistory: true })
+              }
+              aria-label="Selector de color del sistema"
+            />
           </div>
-          
-          
+
+          <div className="slider-container">
+            <label htmlFor="lightness-slider">
+              Luminosidad
+              <input
+                id="lightness-slider"
+                type="range"
+                min={0}
+                max={100}
+                value={colorHSL.lightness}
+                onChange={(event) => handleLightnessInput(Number(event.target.value))}
+                onPointerUp={commitLightnessInput}
+                onKeyUp={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    commitLightnessInput();
+                  }
+                }}
+                onBlur={commitLightnessInput}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={colorHSL.lightness}
+                aria-label="Luminosidad del color"
+              />
+            </label>
+          </div>
+
+          {colorHistory.length > 0 && (
+            <div className="color-history" aria-label="Colores recientes" role="list">
+              {colorHistory.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  className="color-history-swatch"
+                  style={{ backgroundColor: color }}
+                  title={color}
+                  aria-label={`Seleccionar ${color}`}
+                  role="listitem"
+                  onClick={() => updateColorFromHex(color, { addToHistory: true })}
+                />
+              ))}
+            </div>
+          )}
+
           <div className="image-upload">
             <button className="dropdown-toggle" onClick={() => setShowPalettePanel(!showPalettePanel)}>
               {showPalettePanel ? 'Ocultar opciones de paleta' : 'Mostrar opciones de paleta'} {showPalettePanel ? <ChevronUpIcon className="toggle-icon" /> : <ChevronDownIcon className="toggle-icon" />}
@@ -468,9 +840,9 @@ export default function App() {
                 max={64}
                 value={brushSize}
                 onChange={(e) => setBrushSize(Number(e.target.value))}
-                aria-valuemin="1"
-                aria-valuemax="64"
-                aria-valuenow={String(brushSize)}
+                aria-valuemin={1}
+                aria-valuemax={64}
+                aria-valuenow={brushSize}
                 aria-label="Grosor de brocha"
               />
             </label>
@@ -485,9 +857,9 @@ export default function App() {
                 max={100}
                 value={brushOpacity}
                 onChange={(e) => setBrushOpacity(Number(e.target.value))}
-                aria-valuemin="1"
-                aria-valuemax="100"
-                aria-valuenow={String(brushOpacity)}
+                aria-valuemin={1}
+                aria-valuemax={100}
+                aria-valuenow={brushOpacity}
                 aria-label="Opacidad de brocha"
               />
             </label>
@@ -497,7 +869,7 @@ export default function App() {
             <button
               className={`tool-button ${!eraser ? 'active' : ''}`}
               onClick={() => eraser && setEraser(false)}
-              aria-pressed={!eraser ? "true" : "false"}
+              aria-pressed={!eraser}
               aria-label="Pincel"
             >
               <BrushIcon className="tool-icon" /> Pincel
@@ -506,7 +878,7 @@ export default function App() {
             <button
               className={`tool-button ${eraser ? 'active' : ''}`}
               onClick={() => !eraser && setEraser(true)}
-              aria-pressed={eraser ? "true" : "false"}
+              aria-pressed={eraser}
               aria-label="Borrador"
             >
               <ClearIcon className="tool-icon" /> Borrador
@@ -568,7 +940,11 @@ export default function App() {
         </div>
       </aside>
 
-      <section className="stage" ref={stageRef}>
+      <section
+        className="stage"
+        ref={stageRef}
+        data-log-open={showLogPanel ? 'true' : 'false'}
+      >
         <div
           className="canvas-frame"
           style={{ width: `${canvasSize}px`, height: `${canvasSize}px` }}

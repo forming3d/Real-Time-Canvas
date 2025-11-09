@@ -244,8 +244,8 @@ export default function App() {
     // Angle calculation: atan2 returns angle in radians, convert to degrees
     const angle = Math.atan2(y - 0.5, x - 0.5) * 180 / Math.PI;
     // Normalize to 0-360 degrees (0 = right, going counterclockwise)
-    // Adding 90 instead of 270 fixes the color mapping
-    const hue = (angle + 90) % 360;
+    // This is the correct mapping based on our visual color wheel
+    const hue = (angle + 180) % 360;
     const distance = Math.sqrt(Math.pow(x - 0.5, 2) + Math.pow(y - 0.5, 2)) * 2;
     const saturation = Math.min(1, distance) * 100;
     const lightness = 50;

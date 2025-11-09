@@ -330,6 +330,7 @@ export default function App() {
 
   return (
     <main className="app">
+      <img src="/public/logo.png" alt="Logo" className="page-logo" />
       <aside role="complementary" aria-label="Panel de control" className="panel">
         {/* Connection Status */}
         <div className="connection-status">
@@ -340,9 +341,9 @@ export default function App() {
           <button 
             onClick={() => setShowRoomPanel(!showRoomPanel)} 
             aria-label="Ver sala"
-            className="tool-button"
+            className="dropdown-toggle"
           >
-            (ver sala)
+            Ver sala {showRoomPanel ? <ChevronUpIcon className="toggle-icon" /> : <ChevronDownIcon className="toggle-icon" />}
           </button>
         </div>
         
@@ -350,6 +351,10 @@ export default function App() {
         {showRoomPanel && (
           <div className="collapsible">
             <div className="collapsible-content">
+              <p className="info-text">
+                Este es un panel de prueba para la aplicación de dibujo. 
+                Aquí puedes ver y copiar el identificador de la sala actual.
+              </p>
               <form onSubmit={handleRoomSubmit}>
                 <label>
                   Sala:
@@ -360,9 +365,6 @@ export default function App() {
                     aria-label="Nombre de la sala"
                   />
                 </label>
-                <button type="submit" className="tool-button" aria-label="Cambiar sala">
-                  Cambiar
-                </button>
                 <button type="button" className="copy-link-button" onClick={copyWebSocketUrl}>
                   Copiar link de conexión
                 </button>
@@ -408,21 +410,10 @@ export default function App() {
             <span className="color-value">{brushColor}</span>
           </div>
           
-          <h3>Historial</h3>
-          <div className="color-history">
-            {colorHistory.map((color, index) => (
-              <div 
-                key={index} 
-                className="history-color" 
-                style={{ backgroundColor: color }}
-                onClick={() => setBrushColor(color)}
-              ></div>
-            ))}
-          </div>
           
           <div className="image-upload">
-            <button className="upload-button" onClick={() => setShowPalettePanel(!showPalettePanel)}>
-              {showPalettePanel ? 'Ocultar opciones de paleta' : 'Mostrar opciones de paleta'}
+            <button className="dropdown-toggle" onClick={() => setShowPalettePanel(!showPalettePanel)}>
+              {showPalettePanel ? 'Ocultar opciones de paleta' : 'Mostrar opciones de paleta'} {showPalettePanel ? <ChevronUpIcon className="toggle-icon" /> : <ChevronDownIcon className="toggle-icon" />}
             </button>
             
             {showPalettePanel && (
@@ -525,15 +516,14 @@ export default function App() {
         
         {/* Log Window Toggle */}
         <button 
-          className="tool-button" 
-          style={{ margin: '12px 16px' }}
+          className="dropdown-toggle" 
           onClick={() => setShowLogPanel(!showLogPanel)}
         >
-          {showLogPanel ? 'Ocultar log' : 'Mostrar log'}
+          {showLogPanel ? 'Ocultar log' : 'Mostrar log'} {showLogPanel ? <ChevronUpIcon className="toggle-icon" /> : <ChevronDownIcon className="toggle-icon" />}
         </button>
         
         {/* Log Window */}
-        {showLogPanel && (
+        <div className={`log-container ${showLogPanel ? 'expanded' : ''}`}>
           <div className="log-window" ref={logScrollRef}>
             {logs.map(log => (
               <div 
@@ -547,8 +537,11 @@ export default function App() {
                 [{new Date(log.timestamp).toLocaleTimeString()}] {log.message}
               </div>
             ))}
+            {logs.length === 0 && (
+              <div className="log-entry">No hay entradas en el log todavía</div>
+            )}
           </div>
-        )}
+        </div>
       </aside>
 
       <section className="stage" ref={stageRef}>
@@ -570,7 +563,6 @@ export default function App() {
             onDrawEnd={() => sendState('drawing:end')}
             connected={connected}
           />
-          <img src="/logo.png" alt="Logo" className="logo" />
         </div>
       </section>
     </main>

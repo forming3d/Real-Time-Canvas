@@ -555,10 +555,10 @@ input[type="range"]::-moz-range-thumb {
   }
   
   .page-logo {
-    width: 30px;
-    height: 30px;
-    right: 8px;
-    bottom: 8px;
+    width: 100px;
+    height: 100px;
+    right: 10px;
+    bottom: 10px;
   }
 }
 
@@ -593,6 +593,8 @@ input[type="range"]::-moz-range-thumb {
     position: fixed;
     right: 10px;
     bottom: 10px;
+    width: 100px;
+    height: 100px;
   }
 
   .log-container.expanded {
@@ -601,17 +603,17 @@ input[type="range"]::-moz-range-thumb {
     right: 0;
     bottom: 0;
     border-radius: 16px 16px 0 0;
-    padding-bottom: env(safe-area-inset-bottom, 16px);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0) + 16px);
     z-index: 1000;
   }
 
   .log-window {
-    height: 180px;
+    height: 220px;
     border-top: 1px solid #2a2a2a;
   }
 
   .stage[data-log-open="true"] {
-    padding-bottom: 320px;
+    padding-bottom: 360px;
   }
 
   @supports (height: 100dvh) {

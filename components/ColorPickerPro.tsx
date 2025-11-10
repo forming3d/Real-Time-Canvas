@@ -2,18 +2,31 @@ import React from "react";
 import { HexColorPicker, HexColorInput } from "react-colorful";
 import "react-colorful/dist/index.css";
 
-type Props = {
-  value: string;                           // ej. "#ff0066"
+export type ColorPickerProProps = {
+  value: string;                    // #rrggbb
   onChange: (hex: string) => void;
-  recent?: string[];                       // paleta reciente opcional
+  recent?: string[];                // paleta / recientes
   onPickRecent?: (hex: string) => void;
+  disabled?: boolean;
 };
 
-const ColorPickerPro: React.FC<Props> = ({ value, onChange, recent = [], onPickRecent }) => {
+const ColorPickerPro: React.FC<ColorPickerProProps> = ({
+  value,
+  onChange,
+  recent = [],
+  onPickRecent,
+  disabled = false,
+}) => {
   return (
     <div className="cp-root" aria-label="Selector de color">
-      <HexColorPicker color={value} onChange={onChange} />
-      <div className="cp-row">
+      <div
+        aria-disabled={disabled}
+        style={{ opacity: disabled ? 0.5 : 1, pointerEvents: disabled ? "none" : "auto" }}
+      >
+        <HexColorPicker color={value} onChange={onChange} />
+      </div>
+
+      <div className="cp-row" role="group" aria-label="Entrada manual de color">
         <span>#</span>
         <HexColorInput
           color={value}
@@ -21,11 +34,13 @@ const ColorPickerPro: React.FC<Props> = ({ value, onChange, recent = [], onPickR
           prefixed
           aria-label="Código HEX"
           className="cp-input"
+          disabled={disabled}
         />
         <div className="cp-preview" style={{ background: value }} aria-hidden />
       </div>
+
       {recent.length > 0 && (
-        <div className="cp-recent">
+        <div className="cp-recent" role="list" aria-label="Colores recientes">
           {recent.map((c, i) => (
             <button
               key={`${c}-${i}`}
@@ -34,6 +49,8 @@ const ColorPickerPro: React.FC<Props> = ({ value, onChange, recent = [], onPickR
               title={c}
               aria-label={`Usar color ${c}`}
               onClick={() => onPickRecent?.(c)}
+              disabled={disabled}
+              role="listitem"
             />
           ))}
         </div>
@@ -43,4 +60,3 @@ const ColorPickerPro: React.FC<Props> = ({ value, onChange, recent = [], onPickR
 };
 
 export default ColorPickerPro;
-

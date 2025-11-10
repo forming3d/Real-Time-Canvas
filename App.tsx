@@ -13,11 +13,16 @@ type LogEntry = { id: number; message: string; type: 'info' | 'error' | 'success
 
 const randomRoomId = () => Math.random().toString(36).slice(2, 8).toUpperCase();
 
-// ⬅️ tu server escucha en /ws
-const WS_URL = (room: string) =>
-  (location.protocol === 'https:' ? 'wss://' : 'ws://') +
-  (location.host || 'localhost:8080') +
-  `/ws?room=${encodeURIComponent(room)}`;
+// WS en /ws (mismo host del front). Si necesitas forzar dominio, expón VITE_WS_ORIGIN.
+const WS_URL = (room: string) => {
+  const origin = (import.meta as any).env?.VITE_WS_ORIGIN as string | undefined;
+  if (origin) {
+    const proto = origin.startsWith('https') ? 'wss' : 'ws';
+    return `${proto}://${origin.replace(/^https?:\/\//, '')}/ws?room=${encodeURIComponent(room)}`;
+  }
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${proto}://${location.host}/ws?room=${encodeURIComponent(room)}`;
+};
 
 export default function App() {
   const initialRoom = useMemo(() => randomRoomId(), []);
@@ -51,13 +56,13 @@ export default function App() {
   const { state: canvasHistoryState, setState: setCanvasHistoryState, undo, redo, canUndo, canRedo } =
     useHistory<CanvasHistoryState | null>(null);
 
+  // ---- WebSocket ----
   const addLog = useCallback((message: string, type: LogEntry['type'] = 'info') => {
     setLogs(prev => [...prev, { id: nextLogId, message, type, timestamp: Date.now() }]);
     setNextLogId(n => n + 1);
   }, [nextLogId]);
 
   const handleSocketMessage = useCallback((event: MessageEvent) => {
-    // json o binario (Touch manda PNG como binario -> no nos afecta aquí)
     if (typeof event.data === 'string') {
       try {
         const msg = JSON.parse(event.data);
@@ -71,7 +76,9 @@ export default function App() {
         } else if (msg?.type === 'proc') {
           addLog(`Proc recibido: ${String(msg?.payload)}`, 'info');
         }
-      } catch { /* ignorar no-JSON */ }
+      } catch {
+        // otros mensajes de texto no JSON: ignorar
+      }
     }
   }, [addLog]);
 
@@ -81,18 +88,20 @@ export default function App() {
     reconnectMs: 2000
   });
 
+  // Auto-scroll log
   useEffect(() => {
     if (logScrollRef.current)
       logScrollRef.current.scrollTop = logScrollRef.current.scrollHeight;
   }, [logs]);
 
+  // Toggle Log con tecla L
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key.toLowerCase() === 'l') setShowLogPanel(v => !v); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Tamaño canvas (tablet horizontal)
+  // Tamaño canvas adaptado (tablet horizontal)
   useEffect(() => {
     const stageEl = stageRef.current;
     if (!stageEl) return;
@@ -123,11 +132,12 @@ export default function App() {
     img.src = canvasHistoryState.dataUrl;
   }, [canvasHistoryState]);
 
-  // --- PROTOCOLO CORRECTO PARA TOUCH --- //
+  // --- PROTOCOLO ALINEADO CON TU TOUCH --- //
   // draw       -> payload: string "data:image/jpeg;base64,..."
   // state      -> payload: string "drawing:start" | "drawing:end"
   // proc/prompt-> payload: string "texto"
   // final PNG  -> binario (onReceiveBinary)
+
   const sendLiveFrame = useCallback((canvas: HTMLCanvasElement, opts: { liveMax: number; liveJpegQ: number }) => {
     if (!connected) return;
     const { liveMax, liveJpegQ } = opts;
@@ -145,32 +155,32 @@ export default function App() {
     } else {
       dataUrl = canvas.toDataURL('image/jpeg', liveJpegQ);
     }
-
-    // ⬅️ payload como STRING (no objeto)
+    // payload como STRING
     sendJSON({ type: 'draw', payload: dataUrl });
   }, [connected, sendJSON]);
 
   const handleFinalBlob = useCallback(async (blob: Blob) => {
     if (!connected) return;
-    // ⬅️ PNG final como BINARIO (Touch -> onReceiveBinary)
+    // PNG final en binario => onReceiveBinary en Touch
     sendBinary(blob);
     addLog('PNG final enviado (binario)', 'success');
   }, [connected, sendBinary, addLog]);
 
   const sendState = useCallback((state: 'drawing:start' | 'drawing:end') => {
     if (!connected) return;
-    // ⬅️ payload como STRING
     sendJSON({ type: 'state', payload: state });
   }, [connected, sendJSON]);
 
   const sendPrompt = useCallback(() => {
     if (!connected) return;
-    const text = prompt.trim(); if (!text) return;
-    // ⬅️ payload como STRING
+    const text = prompt.trim();
+    if (!text) return;
+    // STRING plano (no {text:...})
     sendJSON({ type: 'proc', payload: text });
     addLog(`Prompt enviado: ${text}`, 'success');
   }, [connected, prompt, sendJSON, addLog]);
 
+  // Extraer paleta de imagen
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
@@ -218,7 +228,9 @@ export default function App() {
     <main className="app">
       <img src="/logo.png" alt="Logo" className="page-logo" />
 
+      {/* Panel */}
       <aside role="complementary" aria-label="Panel de control" className="panel">
+        {/* Estado + Ver sala */}
         <div className="connection-status">
           <div className="status-indicator">
             <div className={`status-dot ${connected ? 'connected' : 'disconnected'}`} />
@@ -233,8 +245,8 @@ export default function App() {
           <div className="collapsible">
             <div className="collapsible-content">
               <p className="info-text">
-                Comparte este <strong>link WSS</strong> con el receptor (TouchDesigner, Node, Python…).<br />
-                <small>El receptor debe conectarse por WebSocket a esta URL para unirse a tu sala.</small>
+                Comparte este <strong>link WSS</strong> con TouchDesigner/Node/Python.<br />
+                <small>Se conectan por WebSocket a esta URL para unirse a tu sala.</small>
               </p>
               <label className="label-inline">
                 Sala
@@ -248,6 +260,7 @@ export default function App() {
           </div>
         )}
 
+        {/* Prompt */}
         <div className="section">
           <label>
             Prompt
@@ -256,6 +269,7 @@ export default function App() {
           <button type="button" className="btn btn-primary btn-sm" onClick={sendPrompt}>Enviar</button>
         </div>
 
+        {/* Color */}
         <div className="section">
           <h3>Color</h3>
           <ColorPickerPro
@@ -284,6 +298,7 @@ export default function App() {
           </div>
         </div>
 
+        {/* Pincel */}
         <div className="section">
           <h3>Pincel</h3>
           <div className="slider-container">
@@ -310,6 +325,7 @@ export default function App() {
         </div>
       </aside>
 
+      {/* Stage */}
       <section className="stage" ref={stageRef as any}>
         <div className="canvas-frame">
           <DrawingCanvas
@@ -322,7 +338,12 @@ export default function App() {
             eraser={eraser}
             onLiveFrame={(c) => sendLiveFrame(c, { liveMax: 256, liveJpegQ: 0.5 })}
             onFinalBlob={(b) => { handleFinalBlob(b); }}
-            onDrawStart={() => sendState('drawing:start')}
+            onDrawStart={() => {
+              // 1) Desbloquea JPEG en vivo en Touch
+              sendState('drawing:start');
+              // 2) Envía un primer frame inmediato (por si el usuario toca y no mueve)
+              const c = canvasRef.current; if (c) sendLiveFrame(c, { liveMax: 256, liveJpegQ: 0.5 });
+            }}
             onDrawEnd={() => {
               const c = canvasRef.current;
               if (c) setCanvasHistoryState({ dataUrl: c.toDataURL('image/png') });
@@ -332,6 +353,7 @@ export default function App() {
           />
         </div>
 
+        {/* LOG */}
         <div className={`log-container ${showLogPanel ? 'expanded' : ''}`} role="region" aria-label="Consola de eventos">
           <div className="log-header">
             <strong>Logs</strong>
@@ -348,8 +370,13 @@ export default function App() {
         </div>
       </section>
 
-      <button className="log-fab" aria-label={showLogPanel ? 'Ocultar log' : 'Mostrar log'}
-        onClick={() => setShowLogPanel(v => !v)} title={showLogPanel ? 'Ocultar log (L)' : 'Mostrar log (L)'}>
+      {/* FAB del log */}
+      <button
+        className="log-fab"
+        aria-label={showLogPanel ? 'Ocultar log' : 'Mostrar log'}
+        onClick={() => setShowLogPanel(v => !v)}
+        title={showLogPanel ? 'Ocultar log (L)' : 'Mostrar log (L)'}
+      >
         {showLogPanel ? '✕' : 'LOG'}
       </button>
     </main>

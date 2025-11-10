@@ -1,4 +1,3 @@
-// DrawingCanvas.tsx
 import React, { useEffect, useImperativeHandle, useRef } from "react";
 
 type Props = {
@@ -54,13 +53,12 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(
       const ctx = c.getContext("2d");
       if (!ctx) return;
 
-      // Trabajamos en coordenadas lógicas (CSS px) con el ctx escalado
+      // Coordenadas lógicas (CSS px)
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
       ctxRef.current = ctx;
     }, [width, height]);
 
-    // Utilidades
     const getPos = (e: PointerEvent) => {
       const c = canvasRef.current!;
       const rect = c.getBoundingClientRect();
@@ -92,7 +90,23 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(
       ctx.stroke();
     };
 
-    // Pointer Events (ratón + táctil) — fluido + preventDefault
+    const drawDot = (p: { x: number; y: number }) => {
+      const ctx = ctxRef.current!;
+      applyBrush();
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, Math.max(0.5, brushSize / 2), 0, Math.PI * 2);
+      ctx.fillStyle = eraser ? "#000" : ctx.strokeStyle as string;
+      if (eraser) {
+        // para borrar con "punto": usar stroke con destination-out
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, Math.max(0.5, brushSize / 2), 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fill();
+      }
+    };
+
+    // Pointer Events (ratón + táctil)
     useEffect(() => {
       const c = canvasRef.current!;
       const onDown = (e: PointerEvent) => {
@@ -100,9 +114,18 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(
         c.setPointerCapture?.(e.pointerId);
         const p = getPos(e);
         lastPts.current.set(e.pointerId, p);
+
+        // Dibuja un punto inmediato (tap sin mover)
+        drawDot(p);
+
         if (!drawing.current) {
           drawing.current = true;
           onDrawStart?.();
+        }
+
+        // Primer frame live inmediato
+        if (connected && onLiveFrame) {
+          onLiveFrame(c);
         }
       };
 

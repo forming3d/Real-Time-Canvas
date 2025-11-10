@@ -1,9 +1,9 @@
 /* ===== 1) Básicos ===== */
 :root {
   color-scheme: dark;
-  --panel-min: 400px;
+  --panel-min: 420px;
   --panel-ideal: 42vw;
-  --panel-max: 500px;
+  --panel-max: 420px;
 
   --log-h-s: 22vh;
   --log-h-m: 25vh;
@@ -56,6 +56,7 @@ body {
   backdrop-filter: blur(6px);
   overflow-y: auto;
   height: 100vh;
+  padding: 8px;
   scrollbar-width: thin;
   scrollbar-color: var(--clr-primary) #1a1a1a;
   -webkit-overflow-scrolling: touch;
@@ -126,10 +127,10 @@ body {
   align-items: center;
   gap: 4px;
   border: 1px solid var(--clr-border);
-  border-radius: 8px;
+  border-radius: 6px;
   background: #262626;
   color: var(--clr-text);
-  padding: 7px 9px;
+  padding: 5px 7px;
   cursor: pointer;
   user-select: none;
   font-size: 12px;
@@ -220,13 +221,13 @@ input[type="file"] {
 }
 
 .section {
-  padding: 6px 10px;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--clr-border);
 }
 
 .section h3 {
-  margin: 0 0 4px 0;
-  font-size: 11px;
+  margin: 0 0 3px 0;
+  font-size: 10px;
   font-weight: 600;
   color: #cbd5e1;
   text-transform: uppercase;
@@ -234,14 +235,14 @@ input[type="file"] {
 }
 
 .section label {
-  font-size: 11px;
+  font-size: 10px;
   color: #94a3b8;
 }
 
 .section textarea {
-  font-size: 11px;
-  min-height: 32px;
-  max-height: 50px;
+  font-size: 10px;
+  min-height: 28px;
+  max-height: 42px;
   resize: vertical;
 }
 
@@ -591,9 +592,9 @@ input[type="range"]::-moz-range-thumb {
   and (orientation: landscape) {
   
   :root {
-    --panel-min: 380px;
-    --panel-ideal: 40vw;
-    --panel-max: 450px;
+    --panel-min: 420px;
+    --panel-ideal: 42vw;
+    --panel-max: 420px;
   }
 
   html, body {
@@ -606,9 +607,41 @@ input[type="range"]::-moz-range-thumb {
     overflow: hidden !important;
   }
 
+  .panel {
+    padding: 5px !important;
+    max-height: 100vh !important;
+  }
+
+  .section {
+    padding: 3px 6px !important;
+    margin-bottom: 4px !important;
+  }
+
+  .section h3 {
+    font-size: 9px !important;
+    margin: 0 0 2px 0 !important;
+  }
+
+  .section textarea {
+    font-size: 9px !important;
+    min-height: 24px !important;
+    max-height: 36px !important;
+  }
+
+  .btn {
+    padding: 4px 6px !important;
+    font-size: 10px !important;
+  }
+
+  input[type="text"],
+  input[type="number"] {
+    padding: 3px 5px !important;
+    font-size: 10px !important;
+  }
+
   .canvas-frame {
-    width: 48vmin !important;
-    max-width: 420px !important;
+    width: 250px !important;
+    max-width: 250px !important;
   }
 
   .stage {

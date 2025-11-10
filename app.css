@@ -317,6 +317,61 @@ body, html, #root {
   outline-offset: 2px; 
 }
 
+/* === ColorPicker Pro === */
+.cp-root {
+  display: grid;
+  gap: 10px;
+}
+
+.cp-row {
+  display: grid;
+  grid-template-columns: auto 1fr 28px;
+  align-items: center;
+  gap: 8px;
+}
+
+.cp-input {
+  width: 100%;
+  padding: 6px 8px;
+  background: #141414;
+  color: #eaeaea;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+
+.cp-preview {
+  width: 28px; 
+  height: 28px;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+}
+
+.cp-recent {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+
+.cp-swatch {
+  width: 28px; 
+  height: 28px;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.cp-swatch:hover {
+  transform: scale(1.1);
+}
+
+.cp-swatch:focus-visible { 
+  outline: 2px solid #7c3aed; 
+  outline-offset: 2px; 
+}
+
 .stage {
   display: grid;
   place-items: center;
@@ -357,38 +412,119 @@ body, html, #root {
   z-index: 10;
 }
 
+/* === Log Flotante - Variables === */
+:root {
+  --log-h-s: 28vh;
+  --log-h-m: 38vh;
+  --log-h-l: 52vh;
+}
+
+/* === Estructura === */
 .log-container {
   max-height: 0;
   overflow: hidden;
-  transition: max-height 0.3s ease;
+  transition: max-height .25s ease;
   display: none;
   position: relative;
   z-index: 200;
 }
 
-/* Forzar superposición y visibilidad en móviles y tablet */
 .log-container.expanded {
   display: block;
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  max-height: min(45vh, 320px);
+  left: 0; right: 0; bottom: 0;
   background: #121212;
   border-top: 1px solid #2a2a2a;
-  box-shadow: 0 -4px 12px rgba(0,0,0,.4);
-  z-index: 2147483647; /* arriba de todo */
+  box-shadow: 0 -6px 20px rgba(0,0,0,.45);
+  z-index: 2147483647;
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
+.log-container.expanded.size-s { max-height: var(--log-h-s); }
+.log-container.expanded.size-m { max-height: var(--log-h-m); }
+.log-container.expanded.size-l { max-height: var(--log-h-l); }
+
 .log-window {
-  padding: 12px 16px;
-  height: calc(min(40vh, 280px));
+  height: calc(100% - 44px); /* header ≈ 44px */
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  padding: 10px 14px;
   background: #1a1a1a;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  font-size: 12px;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* === Header y Controles === */
+.log-header {
+  display: flex; 
+  align-items: center; 
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #2a2a2a;
+  background: #161616;
+}
+
+.log-header .spacer { flex: 1; }
+
+.log-size button {
+  border: 1px solid #2a2a2a;
+  background: #202020;
+  color: #ddd;
+  padding: 4px 8px;
+  border-radius: 6px;
+  margin-left: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.log-size button[aria-pressed="true"] {
+  border-color: #7c3aed;
+  background: #7c3aed22;
+  color: #a78bfa;
+}
+
+.log-hide {
+  margin-left: 8px;
+  border: 1px solid #2a2a2a;
+  background: #2a2a2a;
+  color: #eee;
+  padding: 4px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.log-hide:hover {
+  background: #3a3a3a;
+}
+
+/* Botón flotante para mostrar/ocultar */
+.log-fab {
+  position: fixed;
+  right: 12px; 
+  bottom: 12px;
+  z-index: 2147483647;
+  border: 0;
+  width: 48px; 
+  height: 48px;
+  border-radius: 50%;
+  background: #7c3aed;
+  color: white;
+  box-shadow: 0 6px 16px rgba(0,0,0,.35);
+  font-weight: 700;
+  font-size: 11px;
+  cursor: pointer;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.log-fab:hover {
+  background: #6d28d9;
+  transform: scale(1.05);
+}
+
+.log-fab:active {
+  transform: scale(0.95);
 }
 
 .log-entry {
@@ -552,12 +688,11 @@ input[type="range"]::-moz-range-thumb {
     z-index: 10;
   }
   
-  .log-container.expanded {
-    max-height: min(50vh, 360px);
-  }
-  
-  .log-window {
-    height: calc(min(45vh, 320px));
+  /* Ajustar tamaños de log en landscape */
+  :root {
+    --log-h-s: 22vh;
+    --log-h-m: 30vh;
+    --log-h-l: 40vh;
   }
 }
 

@@ -3,6 +3,7 @@ import React, { FormEvent, useCallback, useEffect, useMemo, useRef, useState } f
 import { DrawingCanvas } from './components/DrawingCanvas';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useHistory } from './hooks/useHistory';
+import ColorPickerPro from './components/ColorPickerPro';
 import {
   ChevronDownIcon, ChevronUpIcon, UndoIcon, RedoIcon, SendIcon,
   BrushIcon, ClearIcon, ConnectIcon, DisconnectIcon
@@ -36,42 +37,18 @@ export default function App() {
   const [eraser, setEraser] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [canvasSize, setCanvasSize] = useState(512);
-  const [colorPickerPosition, setColorPickerPosition] = useState({ x: 0, y: 0 });
   const [showRoomPanel, setShowRoomPanel] = useState(false);
   const [showPalettePanel, setShowPalettePanel] = useState(false);
   const [showLogPanel, setShowLogPanel] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [colorHistory, setColorHistory] = useState<string[]>(['#478792', '#3040a0', '#2050c0', '#4060e0', '#6070f0', '#8080ff', '#90a0ff', '#a0c0ff']);
   const [nextLogId, setNextLogId] = useState(1);
-
-  // Estados HSL
-  const [hue, setHue] = useState(0);        // 0..360
-  const [sat, setSat] = useState(1);        // 0..1
-  const [lum, setLum] = useState(0.5);      // 0..1
-
-  // Convierte HSL (0..360, 0..1, 0..1) a HEX
-  const hslToHex = (H: number, S: number, L: number) => {
-    const C = (1 - Math.abs(2*L - 1)) * S;
-    const X = C * (1 - Math.abs(((H/60) % 2) - 1));
-    const m = L - C/2;
-    let r=0,g=0,b=0;
-    if (0 <= H && H < 60)  { r=C; g=X; b=0; }
-    else if (60 <= H && H < 120) { r=X; g=C; b=0; }
-    else if (120 <= H && H < 180){ r=0; g=C; b=X; }
-    else if (180 <= H && H < 240){ r=0; g=X; b=C; }
-    else if (240 <= H && H < 300){ r=X; g=0; b=C; }
-    else { r=C; g=0; b=X; }
-    const toHex = (v:number)=> (Math.round((v+m)*255)).toString(16).padStart(2,'0');
-    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-  };
-
-  // sincroniza brushColor cuando cambia H/S/L
-  useEffect(() => {
-    setBrushColor(hslToHex(hue, sat, lum));
-  }, [hue, sat, lum]);
+  
+  // Estados del log flotante
+  const [logOpen, setLogOpen] = useState(false);
+  const [logSize, setLogSize] = useState<'s'|'m'|'l'>('m');
 
   const url = useMemo(() => WS_URL(room), [room]);
-  const colorPickerRef = useRef<HTMLDivElement>(null);
   const logScrollRef = useRef<HTMLDivElement>(null);
   
   const { state: canvasHistoryState, setState: setCanvasHistoryState, undo, redo, canUndo, canRedo } = 
@@ -161,6 +138,15 @@ export default function App() {
     }
   }, [connected]);
 
+  // Atajo de teclado "L" para alternar log
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 'l') setLogOpen(v => !v);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const saveCanvasState = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -246,42 +232,6 @@ export default function App() {
     setRoomInput(normalized);
     addLog(`Cambiando a sala: ${normalized}`, 'info');
   }, [room, roomInput]);
-
-  const handleColorPickerChange = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const el = colorPickerRef.current;
-    if (!el) return;
-
-    const rect = el.getBoundingClientRect();
-    const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-    setColorPickerPosition({ x, y }); // para el cursor
-
-    // Geometría
-    const cx = 0.5, cy = 0.5;
-    const dx = x - cx, dy = y - cy;
-    const r = Math.sqrt(dx*dx + dy*dy);         // 0..~0.71
-    
-    // Ángulo CCW -> convertir a CW para coincidir con conic-gradient
-    const angleDeg = (Math.atan2(y - 0.5, x - 0.5) * 180) / Math.PI; // -180..180, CCW
-    const hue = (360 - ((angleDeg + 360) % 360)) % 360;              // 0..360, CW
-
-    // Tamaño del cuadrado central (igual que CSS: 40% del contenedor)
-    const SQ = 0.40;
-    const left = cx - SQ/2, right = cx + SQ/2;
-    const top  = cy - SQ/2, bottom = cy + SQ/2;
-    const inSquare = (x >= left && x <= right && y >= top && y <= bottom);
-
-    if (inSquare) {
-      // Mapear S (0..1) y L (0..1) dentro del cuadrado
-      const sx = (x - left) / SQ;   // 0 izquierda (blanco) -> 1 derecha (color)
-      const ly = 1 - (y - top) / SQ; // 1 arriba (más claro) -> 0 abajo (oscuro)
-      setSat(sx);
-      setLum(ly);
-    } else {
-      // Selección de hue en el anillo
-      setHue(hue);
-    }
-  }, []);
 
   const copyWebSocketUrl = useCallback(() => {
     navigator.clipboard.writeText(url).then(() => {
@@ -487,34 +437,12 @@ export default function App() {
         {/* Color Section */}
         <div className="color-section">
           <h3>Color</h3>
-          <div 
-            className="color-picker" 
-            ref={colorPickerRef}
-            style={{ ['--picker-hue' as any]: hue }}
-            onMouseDown={handleColorPickerChange}
-            onMouseMove={(e) => e.buttons === 1 && handleColorPickerChange(e)}
-            onTouchStart={(e) => {
-              const t = e.touches[0];
-              handleColorPickerChange({ clientX: t.clientX, clientY: t.clientY } as any);
-            }}
-            onTouchMove={(e) => {
-              const t = e.touches[0];
-              handleColorPickerChange({ clientX: t.clientX, clientY: t.clientY } as any);
-            }}
-          >
-            <div className="color-square" />
-            <div 
-              className="color-cursor" 
-              style={{ 
-                left: `${colorPickerPosition.x * 100}%`, 
-                top: `${colorPickerPosition.y * 100}%` 
-              }}
-            />
-          </div>
-          <div className="color-display">
-            <div className="color-preview" style={{ backgroundColor: brushColor }}></div>
-            <span className="color-value">{brushColor}</span>
-          </div>
+          <ColorPickerPro
+            value={brushColor}
+            onChange={setBrushColor}
+            recent={colorHistory}
+            onPickRecent={setBrushColor}
+          />
           
           
           <div className="image-upload">
@@ -531,21 +459,6 @@ export default function App() {
               />
             )}
           </div>
-          
-          {showPalettePanel && colorHistory.length > 0 && (
-            <div className="palette">
-              {colorHistory.map((c, i) => (
-                <button
-                  key={`${c}-${i}`}
-                  className="swatch"
-                  style={{ backgroundColor: c }}
-                  onClick={() => setBrushColor(c)}
-                  aria-label={`Seleccionar color ${c}`}
-                  title={c}
-                />
-              ))}
-            </div>
-          )}
         </div>
         
         {/* Brush Controls */}
@@ -634,32 +547,44 @@ export default function App() {
             </button>
           </div>
         </div>
-        
-        {/* Log Window Toggle */}
-        <button 
-          className="dropdown-toggle" 
-          onClick={() => setShowLogPanel(!showLogPanel)}
-        >
-          {showLogPanel ? 'Ocultar log' : 'Mostrar log'} {showLogPanel ? <ChevronUpIcon className="toggle-icon" /> : <ChevronDownIcon className="toggle-icon" />}
-        </button>
-        
-        {/* Log Window */}
-        <div className={`log-container ${showLogPanel ? 'expanded' : ''}`}>
-          <div className="log-window" ref={logScrollRef}>
-            {logs.map(log => (
-              <div 
-                key={log.id} 
-                className={`log-entry log-entry-${log.type}`}
-              >
-                [{new Date(log.timestamp).toLocaleTimeString()}] {log.message}
-              </div>
-            ))}
-            {logs.length === 0 && (
-              <div className="log-entry">No hay entradas en el log todavía</div>
-            )}
-          </div>
-        </div>
       </aside>
+
+      {/* Log Window Flotante */}
+      <div className={`log-container ${logOpen ? 'expanded' : ''} size-${logSize}`} role="region" aria-label="Consola de eventos">
+        <div className="log-header">
+          <strong>Logs</strong>
+          <div className="spacer" />
+          <div className="log-size">
+            <button onClick={() => setLogSize('s')} aria-pressed={logSize==='s'}>S</button>
+            <button onClick={() => setLogSize('m')} aria-pressed={logSize==='m'}>M</button>
+            <button onClick={() => setLogSize('l')} aria-pressed={logSize==='l'}>L</button>
+          </div>
+          <button className="log-hide" onClick={() => setLogOpen(false)} aria-label="Ocultar log">✕</button>
+        </div>
+        <div className="log-window" id="app-log-window" ref={logScrollRef}>
+          {logs.map(log => (
+            <div 
+              key={log.id} 
+              className={`log-entry log-entry-${log.type}`}
+            >
+              [{new Date(log.timestamp).toLocaleTimeString()}] {log.message}
+            </div>
+          ))}
+          {logs.length === 0 && (
+            <div className="log-entry">No hay entradas en el log todavía</div>
+          )}
+        </div>
+      </div>
+
+      {/* Botón Flotante Log */}
+      <button
+        className="log-fab"
+        aria-label={logOpen ? "Ocultar log" : "Mostrar log"}
+        onClick={() => setLogOpen(v => !v)}
+        title={logOpen ? "Ocultar log (L)" : "Mostrar log (L)"}
+      >
+        {logOpen ? '✕' : 'LOG'}
+      </button>
 
       <section className="stage" ref={stageRef}>
         <div

@@ -107,7 +107,7 @@ export default function App() {
     const MAX_DESKTOP_PX = 720;             // tope en PC
     const MAX_TABLET_LANDSCAPE_PX = 450;    // tope en tablet horizontal
     const MAX_TABLET_PORTRAIT_PX  = 350;    // tope en tablet vertical
-    const PAD = 24;                         // margen de respiración
+    const PAD = 8;                         // margen de respiración
 
     const compute = () => {
       const b = stageEl.getBoundingClientRect();

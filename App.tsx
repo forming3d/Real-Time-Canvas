@@ -301,7 +301,27 @@ export default function App() {
               <button className="btn btn-muted btn-sm" onClick={undo} disabled={!canUndo} title="Deshacer"><UndoIcon className="tool-icon" /></button>
               <button className="btn btn-muted btn-sm" onClick={redo} disabled={!canRedo} title="Rehacer"><RedoIcon className="tool-icon" /></button>
               <button className="btn btn-danger btn-sm btn-full-width" onClick={clearCanvas} aria-label="Borrar lienzo">Limpiar Canvas</button>
+              
+              {/* Botón para expandir paleta */}
+              <button className="btn btn-ghost btn-sm btn-full-width" onClick={() => setShowPalettePanel(v => !v)}>
+                {showPalettePanel ? <ChevronUpIcon className="toggle-icon" /> : <ChevronDownIcon className="toggle-icon" />} Cargar Paleta
+              </button>
             </div>
+            
+            {/* Panel de paleta colapsable */}
+            {showPalettePanel && (
+              <div className="palette-section">
+                <input type="file" accept="image/*" onChange={handleImageUpload} aria-label="Subir imagen para extraer paleta" />
+                {colorHistory.length > 0 && (
+                  <div className="palette">
+                    {colorHistory.map((c, i) => (
+                      <button key={c + i} className="swatch" style={{ backgroundColor: c }}
+                        onClick={() => setBrushColor(c)} aria-label={`Seleccionar color ${c}`} title={c} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Sliders de grosor y opacidad */}

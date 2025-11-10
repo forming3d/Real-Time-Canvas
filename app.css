@@ -87,7 +87,7 @@ body {
 }
 
 .canvas-frame {
-  width: min(90%, 45vmin, 400px);
+  width: min(90%, 20vmin, 50px);
   margin: 0 auto;
 }
 
@@ -277,6 +277,21 @@ input[type="file"] {
   font-size: 12px;
   padding: 10px 12px;
   min-height: 40px;
+}
+
+/* Sección de paleta */
+.palette-section {
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--clr-bg-2);
+  border-radius: 6px;
+}
+
+.palette-section input[type="file"] {
+  width: 100%;
+  font-size: 10px;
+  padding: 6px;
+  margin-bottom: 8px;
 }
 
 .info-text {
@@ -695,6 +710,17 @@ input[type="range"]::-moz-range-thumb {
     min-height: 36px !important;
   }
 
+  .palette-section {
+    margin-top: 6px !important;
+    padding: 6px !important;
+  }
+
+  .palette-section input[type="file"] {
+    font-size: 9px !important;
+    padding: 4px !important;
+    margin-bottom: 6px !important;
+  }
+
   .cp-input {
     font-size: 8px !important;
     padding: 2px 3px !important;
@@ -715,8 +741,8 @@ input[type="range"]::-moz-range-thumb {
   }
 
   .canvas-frame {
-    width: 45vmin !important;
-    max-width: 350px !important;
+    width: 20vmin !important;
+    max-width: 100px !important;
   }
 
   .stage {

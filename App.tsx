@@ -105,8 +105,8 @@ export default function App() {
     // ---- límites fáciles de ajustar ----
     const MIN_PX = 240;
     const MAX_DESKTOP_PX = 720;             // tope en PC
-    const MAX_TABLET_LANDSCAPE_PX = 350;    // tope en tablet horizontal
-    const MAX_TABLET_PORTRAIT_PX  = 400;    // tope en tablet vertical
+    const MAX_TABLET_LANDSCAPE_PX = 450;    // tope en tablet horizontal
+    const MAX_TABLET_PORTRAIT_PX  = 350;    // tope en tablet vertical
     const PAD = 24;                         // margen de respiración
 
     const compute = () => {

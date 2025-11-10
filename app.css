@@ -207,12 +207,12 @@ body {
   }
   
   .stage {
-    padding: 15px 12px 12px;
+    padding: 30px 12px 12px;
     align-items: flex-start;
   }
   
   .canvas-frame {
-    padding: 12px;
+    padding: 8px 12px 12px;
   }
 }
 
@@ -853,8 +853,12 @@ input[type="range"]::-moz-range-thumb {
   }
 
   .stage {
-    padding: 15px 10px 10px !important;
+    padding: 35px 10px 10px !important;
     align-items: flex-start !important;
+  }
+
+  .canvas-frame {
+    padding: 5px 12px 12px !important;
   }
 
   .log-container.expanded {
@@ -896,8 +900,12 @@ input[type="range"]::-moz-range-thumb {
 
   .stage {
     height: 65vh !important;
-    padding: 10px 5px 5px !important;
+    padding: 25px 5px 5px !important;
     align-items: flex-start !important;
+  }
+
+  .canvas-frame {
+    padding: 5px 8px 8px !important;
   }
 
   .section {

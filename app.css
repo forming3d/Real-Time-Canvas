@@ -1,3 +1,86 @@
+/* ===== 0) Estilos para react-colorful ===== */
+.react-colorful {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 200px;
+  height: 200px;
+  user-select: none;
+  cursor: default;
+}
+
+.react-colorful__saturation {
+  position: relative;
+  flex-grow: 1;
+  border-color: transparent;
+  border-bottom: 12px solid #000;
+  border-radius: 8px 8px 0 0;
+  background-image: linear-gradient(to top, #000, rgba(0, 0, 0, 0)),
+    linear-gradient(to right, #fff, rgba(255, 255, 255, 0));
+}
+
+.react-colorful__pointer-fill,
+.react-colorful__alpha-gradient {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.react-colorful__pointer {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  transform: translate(-50%, -50%);
+  background-color: #fff;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.react-colorful__interactive {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: inherit;
+  outline: none;
+  touch-action: none;
+}
+
+.react-colorful__hue {
+  position: relative;
+  height: 24px;
+  border-radius: 0 0 8px 8px;
+  background: linear-gradient(
+    to right,
+    #f00 0%,
+    #ff0 17%,
+    #0f0 33%,
+    #0ff 50%,
+    #00f 67%,
+    #f0f 83%,
+    #f00 100%
+  );
+}
+
+.react-colorful__last-control {
+  border-radius: 0 0 8px 8px;
+}
+
+.react-colorful__hue-pointer {
+  width: 18px;
+  height: inherit;
+  border-radius: 4px;
+}
+
 /* ===== 1) Básicos ===== */
 :root {
   color-scheme: dark;
@@ -598,6 +681,11 @@ input[type="range"]::-moz-range-thumb {
 .cp-root {
   display: grid;
   gap: 4px;
+}
+
+.cp-root .react-colorful {
+  width: 160px;
+  height: 140px;
 }
 
 .cp-row {

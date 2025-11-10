@@ -1,11 +1,12 @@
-import React, { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { DrawingCanvas } from './DrawingCanvas';           // <- ruta CORRECTA
-import { useWebSocket } from './useWebSocket';             // <- ruta CORRECTA
-import { useHistory } from './useHistory';                 // <- ruta CORRECTA
+// App.tsx
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DrawingCanvas } from './components/DrawingCanvas';
+import { useWebSocket } from './hooks/useWebSocket';
+import { useHistory } from './hooks/useHistory';
 import {
   ChevronDownIcon, ChevronUpIcon, UndoIcon, RedoIcon,
   BrushIcon, ClearIcon
-} from './icons';                                          // <- ruta CORRECTA
+} from './components/icons';
 import ColorPickerPro from './components/ColorPickerPro';
 
 const randomRoomId = () => Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -15,14 +16,8 @@ const WS_URL = (room: string) =>
   (location.host || 'localhost:8080') +
   `?room=${encodeURIComponent(room)}`;
 
-type CanvasHistoryState = { dataUrl: string; };
-
-type LogEntry = {
-  id: number;
-  message: string;
-  type: 'info' | 'error' | 'success';
-  timestamp: number;
-};
+type CanvasHistoryState = { dataUrl: string };
+type LogEntry = { id: number; message: string; type: 'info' | 'error' | 'success'; timestamp: number; };
 
 export default function App() {
   const initialRoom = useMemo(() => randomRoomId(), []);
@@ -48,12 +43,15 @@ export default function App() {
   const [nextLogId, setNextLogId] = useState(1);
 
   const url = useMemo(() => WS_URL(room), [room]);
-
   const logScrollRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // --- WebSocket (auto-reconnect en el hook) ---
+  // Historial (para Undo/Redo por imagen)
+  const { state: histState, setState: setHist, undo, redo, canUndo, canRedo } =
+    useHistory<CanvasHistoryState | null>(null);
+
+  // WebSocket
   const addLog = useCallback((message: string, type: LogEntry['type'] = 'info') => {
     setLogs(prev => [...prev, { id: nextLogId, message, type, timestamp: Date.now() }]);
     setNextLogId(n => n + 1);
@@ -84,33 +82,29 @@ export default function App() {
     reconnectMs: 2000
   });
 
-  // --- Logs: scroll al final ---
+  // Scroll auto del log
   useEffect(() => {
-    if (logScrollRef.current) {
-      logScrollRef.current.scrollTop = logScrollRef.current.scrollHeight;
-    }
+    if (logScrollRef.current) logScrollRef.current.scrollTop = logScrollRef.current.scrollHeight;
   }, [logs]);
 
-  // --- Tecla rápida para abrir/cerrar log ---
+  // Tecla L → abre/cierra log
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key.toLowerCase() === 'l') setShowLogPanel(v => !v); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // --- Ajuste de tamaño del canvas respecto al contenedor ---
+  // Ajuste responsivo del canvas
   useEffect(() => {
     const stageEl = stageRef.current;
     if (!stageEl) return;
-
-    const paddingCompensation = 40; // margen
+    const paddingCompensation = 40;
     const computeSize = () => {
       const bounds = stageEl.getBoundingClientRect();
       const available = Math.max(0, bounds.width - paddingCompensation);
       const next = Math.round(Math.min(512, Math.max(256, available || 512)));
-      setCanvasSize((prev) => (Math.abs(prev - next) > 1 ? next : prev));
+      setCanvasSize(prev => (Math.abs(prev - next) > 1 ? next : prev));
     };
-
     computeSize();
     let ro: ResizeObserver | null = null;
     if ('ResizeObserver' in window) {
@@ -119,13 +113,24 @@ export default function App() {
     } else {
       window.addEventListener('resize', computeSize);
     }
-    return () => {
-      ro?.disconnect();
-      window.removeEventListener('resize', computeSize);
-    };
+    return () => { ro?.disconnect(); window.removeEventListener('resize', computeSize); };
   }, []);
 
-  // --- Acciones canvas / envío WS ---
+  // Pintar snapshot del historial cuando se hace Undo/Redo
+  useEffect(() => {
+    if (!histState?.dataUrl || !canvasRef.current) return;
+    const img = new Image();
+    img.onload = () => {
+      const c = canvasRef.current!;
+      const ctx = c.getContext('2d');
+      if (!ctx) return;
+      ctx.clearRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+    };
+    img.src = histState.dataUrl;
+  }, [histState]);
+
+  // Enviar frame live (JPEG reducido)
   const sendLiveFrame = useCallback((canvas: HTMLCanvasElement, options: { liveMax: number; liveJpegQ: number }) => {
     if (!connected) return;
     const { liveMax, liveJpegQ } = options;
@@ -134,7 +139,6 @@ export default function App() {
     const logicalHeight = canvas.height / dpr;
     const scale = Math.min(1, liveMax / Math.max(logicalWidth, logicalHeight));
     let dataUrl: string;
-
     if (scale < 1) {
       const w = Math.round(logicalWidth * scale);
       const h = Math.round(logicalHeight * scale);
@@ -149,6 +153,7 @@ export default function App() {
     sendJSON({ type: 'draw', payload: { dataUrl } });
   }, [connected, sendJSON]);
 
+  // Enviar PNG final
   const handleFinalBlob = useCallback(async (blob: Blob) => {
     if (!connected) return;
     const arrayBuffer = await blob.arrayBuffer();
@@ -157,19 +162,17 @@ export default function App() {
     addLog('Imagen final enviada', 'success');
   }, [connected, sendJSON, addLog]);
 
+  // Borrar lienzo
   const clearCanvas = useCallback(() => {
-    const c = canvasRef.current;
-    if (!c) return;
-    const ctx = c.getContext('2d');
-    if (!ctx) return;
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const c = canvasRef.current; if (!c) return;
+    const ctx = c.getContext('2d'); if (!ctx) return;
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, c.width, c.height);
     ctx.restore();
     addLog('Canvas borrado', 'info');
   }, [addLog]);
 
-  // --- Envíos de estado y prompt ---
+  // Estados WS / Prompt
   const sendState = useCallback((state: string) => {
     if (!connected) return;
     sendJSON({ type: 'state', payload: { state } });
@@ -177,13 +180,12 @@ export default function App() {
 
   const sendPrompt = useCallback(() => {
     if (!connected) return;
-    const text = prompt.trim();
-    if (!text) return;
+    const text = prompt.trim(); if (!text) return;
     sendJSON({ type: 'proc', payload: { text } });
     addLog(`Prompt enviado: ${text}`, 'success');
   }, [connected, prompt, sendJSON, addLog]);
 
-  // --- Paleta por imagen ---
+  // Paleta por imagen (muestras simples)
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
@@ -216,28 +218,27 @@ export default function App() {
     reader.readAsDataURL(file);
   }, [addLog]);
 
-  // --- Copiar Link WSS ---
+  // Copiar WSS
   const handleCopyLink = useCallback(async () => {
-    const link = WS_URL(room);
+    const link = WS_URL(roomInput || room);
     try {
       await navigator.clipboard.writeText(link);
-      addLog('Link WSS copiado al portapapeles', 'success');
+      addLog('Link WSS copiado', 'success');
     } catch {
-      // Fallback
       const ta = document.createElement('textarea');
       ta.value = link; document.body.appendChild(ta);
       ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
       addLog('Link WSS copiado (fallback)', 'success');
     }
-  }, [room, addLog]);
+  }, [room, roomInput, addLog]);
 
   return (
     <main className="app">
       <img src="/logo.png" alt="Logo" className="page-logo" />
 
-      {/* PANEL LATERAL */}
+      {/* Panel lateral */}
       <aside role="complementary" aria-label="Panel de control" className="panel">
-        {/* Estado + botón 'Ver sala' */}
+        {/* Estado + botón Ver sala */}
         <div className="connection-status">
           <div className="status-indicator">
             <div className={`status-dot ${connected ? 'connected' : 'disconnected'}`} />
@@ -259,8 +260,9 @@ export default function App() {
               <p className="info-text">
                 Comparte este <strong>link WSS</strong> con el receptor (TouchDesigner, Node, Python…).
                 <br />
-                <small>El receptor debe abrir un WebSocket a esta URL para unirse a tu sala.</small>
+                <small>El receptor debe conectarse por WebSocket a esta URL para unirse a tu sala.</small>
               </p>
+
               <label className="label-inline">
                 Sala
                 <input
@@ -271,7 +273,12 @@ export default function App() {
               </label>
 
               <div className="room-actions">
-                <input className="room-link" readOnly value={WS_URL(roomInput || room)} aria-label="Link WSS" />
+                <input
+                  className="room-link"
+                  readOnly
+                  value={WS_URL(roomInput || room)}
+                  aria-label="Link WSS"
+                />
                 <button className="btn btn-primary btn-sm" onClick={handleCopyLink}>Copiar link</button>
               </div>
             </div>
@@ -336,7 +343,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Pincel (botones más pequeños y mejor diseño) */}
+        {/* Pincel (botones pequeños) */}
         <div className="section">
           <h3>Pincel</h3>
 
@@ -387,26 +394,21 @@ export default function App() {
             >
               <ClearIcon className="tool-icon" /> Borrador
             </button>
-
-            <button className="btn btn-muted btn-sm" onClick={useHistory(() => null).undo} disabled aria-disabled title="Deshacer (deshabilitado)">
+            <button className="btn btn-muted btn-sm" onClick={undo} disabled={!canUndo} title="Deshacer">
               <UndoIcon className="tool-icon" /> Undo
             </button>
-            <button className="btn btn-muted btn-sm" onClick={useHistory(() => null).redo} disabled aria-disabled title="Rehacer (deshabilitado)">
+            <button className="btn btn-muted btn-sm" onClick={redo} disabled={!canRedo} title="Rehacer">
               <RedoIcon className="tool-icon" /> Redo
             </button>
-          </div>
-
-          <div className="toolbar">
-            {/* Botón Guardar estado - ELIMINADO a petición */}
             <button className="btn btn-danger btn-sm" onClick={clearCanvas} aria-label="Borrar lienzo">
-              Borrar lienzo
+              Borrar
             </button>
           </div>
         </div>
       </aside>
 
-      {/* STAGE (área de dibujo) */}
-      <section className="stage" ref={stageRef}>
+      {/* Stage (área de dibujo) */}
+      <section className="stage" ref={stageRef as any}>
         <div className="canvas-frame">
           <DrawingCanvas
             ref={canvasRef as any}
@@ -416,10 +418,15 @@ export default function App() {
             brushOpacity={brushOpacity}
             brushSize={brushSize}
             eraser={eraser}
-            onLiveFrame={sendLiveFrame}
+            onLiveFrame={(c) => sendLiveFrame(c, { liveMax: 256, liveJpegQ: 0.5 })}
             onFinalBlob={handleFinalBlob}
             onDrawStart={() => sendState('drawing:start')}
-            onDrawEnd={() => sendState('drawing:end')}
+            onDrawEnd={() => {
+              // snapshot para Undo/Redo
+              const c = canvasRef.current;
+              if (c) setHist({ dataUrl: c.toDataURL('image/png') });
+              sendState('drawing:end');
+            }}
             connected={connected}
           />
         </div>

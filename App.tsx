@@ -307,12 +307,20 @@ export default function App() {
         <div className="section">
           <h3>Pincel</h3>
           <div className="slider-container">
-            <label>Grosor
+            <label>
+              <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>Grosor</span>
+                <span style={{ fontSize: '11px', color: '#7c3aed', fontWeight: 600 }}>{brushSize}px</span>
+              </span>
               <input type="range" min={1} max={80} value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} aria-label="Grosor del pincel" />
             </label>
           </div>
           <div className="slider-container">
-            <label>Opacidad
+            <label>
+              <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>Opacidad</span>
+                <span style={{ fontSize: '11px', color: '#7c3aed', fontWeight: 600 }}>{brushOpacity}%</span>
+              </span>
               <input type="range" min={1} max={100} value={brushOpacity} onChange={(e) => setBrushOpacity(Number(e.target.value))} aria-label="Opacidad del pincel" />
             </label>
           </div>
@@ -323,9 +331,9 @@ export default function App() {
             <button className={`btn btn-ghost btn-sm ${eraser ? 'active' : ''}`} onClick={() => setEraser(true)} aria-label="Borrador" title="Borrador">
               <ClearIcon className="tool-icon" /> Borrador
             </button>
-            <button className="btn btn-muted btn-sm" onClick={undo} disabled={!canUndo} title="Deshacer"><UndoIcon className="tool-icon" /> Undo</button>
-            <button className="btn btn-muted btn-sm" onClick={redo} disabled={!canRedo} title="Rehacer"><RedoIcon className="tool-icon" /> Redo</button>
-            <button className="btn btn-danger btn-sm" onClick={clearCanvas} aria-label="Borrar lienzo">Borrar</button>
+            <button className="btn btn-muted btn-sm" onClick={undo} disabled={!canUndo} title="Deshacer"><UndoIcon className="tool-icon" /></button>
+            <button className="btn btn-muted btn-sm" onClick={redo} disabled={!canRedo} title="Rehacer"><RedoIcon className="tool-icon" /></button>
+            <button className="btn btn-danger btn-sm" onClick={clearCanvas} aria-label="Borrar lienzo" style={{ gridColumn: '1 / -1' }}>Limpiar Canvas</button>
           </div>
         </div>
       </aside>

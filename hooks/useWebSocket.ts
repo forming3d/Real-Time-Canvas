@@ -13,6 +13,19 @@ export function useWebSocket(opts: UseWSOpts) {
   const { url, reconnectMs = 2000, onOpen, onClose, onError, onMessage } = opts;
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+  
+  // Usar refs para callbacks para evitar reconexiones
+  const onOpenRef = useRef(onOpen);
+  const onCloseRef = useRef(onClose);
+  const onErrorRef = useRef(onError);
+  const onMessageRef = useRef(onMessage);
+  
+  useEffect(() => {
+    onOpenRef.current = onOpen;
+    onCloseRef.current = onClose;
+    onErrorRef.current = onError;
+    onMessageRef.current = onMessage;
+  }, [onOpen, onClose, onError, onMessage]);
 
   useEffect(() => {
     let dead = false;
@@ -27,28 +40,28 @@ export function useWebSocket(opts: UseWSOpts) {
         if (dead) return; 
         console.log('✅ WebSocket conectado:', url);
         setConnected(true); 
-        onOpen?.(); 
+        onOpenRef.current?.(); 
       };
       ws.onclose = () => {
         if (dead) return;
         console.log('🔌 WebSocket desconectado');
         setConnected(false);
-        onClose?.();
+        onCloseRef.current?.();
         timer = setTimeout(connect, reconnectMs);
       };
       ws.onerror = (ev) => { 
         console.error('❌ WebSocket error:', ev);
-        onError?.(ev); 
+        onErrorRef.current?.(ev); 
       };
       ws.onmessage = (ev) => { 
         console.log('📥 Mensaje recibido:', typeof ev.data, ev.data instanceof ArrayBuffer ? `${ev.data.byteLength} bytes` : ev.data.substring(0, 100));
-        onMessage?.(ev); 
+        onMessageRef.current?.(ev); 
       };
     };
 
     connect();
     return () => { dead = true; clearTimeout(timer); try { wsRef.current?.close(); } catch { } };
-  }, [url, reconnectMs, onOpen, onClose, onError, onMessage]);
+  }, [url, reconnectMs]);
 
   const sendJSON = useCallback((obj: any) => {
     const ws = wsRef.current;

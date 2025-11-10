@@ -45,7 +45,7 @@ export default function App() {
   const [colorHistory, setColorHistory] = useState<string[]>([
     '#ff0040', '#3040a0', '#2050c0', '#4060e0', '#6070f0', '#8080ff', '#90a0ff', '#a0c0ff'
   ]);
-  const [nextLogId, setNextLogId] = useState(1);
+  const nextLogIdRef = useRef(1);
 
   const url = useMemo(() => WS_URL(room), [room]);
   const logScrollRef = useRef<HTMLDivElement>(null);
@@ -56,9 +56,9 @@ export default function App() {
     useHistory<CanvasHistoryState | null>(null);
 
   const addLog = useCallback((message: string, type: LogEntry['type'] = 'info') => {
-    setLogs(prev => [...prev, { id: nextLogId, message, type, timestamp: Date.now() }]);
-    setNextLogId(n => n + 1);
-  }, [nextLogId]);
+    const id = nextLogIdRef.current++;
+    setLogs(prev => [...prev, { id, message, type, timestamp: Date.now() }]);
+  }, []);
 
   const handleSocketMessage = useCallback((event: MessageEvent) => {
     if (typeof event.data !== 'string') return;

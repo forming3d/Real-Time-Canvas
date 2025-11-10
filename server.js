@@ -34,39 +34,56 @@ function leaveRoom(ws) {
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const room = (url.searchParams.get('room') || 'DEFAULT').toUpperCase();
-  const clientIp = req.socket.remoteAddress;
+  const clientId = `${req.socket.remoteAddress}:${req.socket.remotePort}`.substring(0, 20);
   joinRoom(ws, room);
+  ws._clientId = clientId;
 
-  console.log(`✅ Cliente conectado a sala: ${room} (IP: ${clientIp}). Total en sala: ${rooms.get(room)?.size || 0}`);
+  console.log(`✅ [${room}] Cliente ${clientId} conectado. Total: ${rooms.get(room)?.size}`);
 
   // saludo
-  try { ws.send(JSON.stringify({ type: 'hello', payload: { room } })); } catch { }
+  try { 
+    ws.send(JSON.stringify({ type: 'hello', payload: { room } })); 
+    console.log(`👋 [${room}] Saludo enviado a ${clientId}`);
+  } catch(e) { 
+    console.error(`❌ Error enviando saludo:`, e.message);
+  }
 
   // reenvía a OTROS clientes de la sala (texto o binario)
   ws.on('message', (data, isBinary) => {
     const dataType = isBinary ? 'BINARIO' : 'TEXTO';
     const dataSize = data.length || data.byteLength || 0;
-    const preview = !isBinary && data.length < 100 ? data.toString() : '';
+    const preview = !isBinary && dataSize < 200 ? data.toString().substring(0, 100) : '';
     
-    console.log(`📥 [${room}] Recibido ${dataType} (${dataSize} bytes)${preview ? ': ' + preview : ''}`);
+    console.log(`📥 [${room}] ${clientId} envió ${dataType} (${dataSize} bytes)${preview ? ': ' + preview : ''}`);
     
     const set = rooms.get(room);
-    if (!set) return;
+    if (!set) {
+      console.warn(`⚠️ [${room}] Sala no existe`);
+      return;
+    }
     
     let sent = 0;
     for (const client of set) {
       if (client !== ws && client.readyState === WebSocket.OPEN) {
-        client.send(data, { binary: isBinary });
-        sent++;
+        try {
+          client.send(data, { binary: isBinary });
+          sent++;
+        } catch(e) {
+          console.error(`❌ Error enviando a cliente:`, e.message);
+        }
       }
     }
     
-    console.log(`📤 [${room}] Reenviado a ${sent} cliente(s)`);
+    console.log(`📤 [${room}] Reenviado a ${sent} de ${set.size - 1} cliente(s)`);
   });
 
-  ws.on('close', () => {
+  ws.on('close', (code, reason) => {
     leaveRoom(ws);
-    console.log(`🔌 Cliente desconectado de sala: ${room}. Quedan: ${rooms.get(room)?.size || 0}`);
+    console.log(`🔌 [${room}] ${clientId} desconectado (código: ${code}). Quedan: ${rooms.get(room)?.size || 0}`);
+  });
+
+  ws.on('error', (err) => {
+    console.error(`❌ [${room}] ${clientId} error:`, err.message);
   });
 });
 

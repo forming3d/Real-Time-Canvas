@@ -163,7 +163,7 @@ body {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 20px 5px 5px;
+  padding: 30px 5px 5px;
   height: 100vh !important;
   overflow: hidden !important;
   background: radial-gradient(ellipse at center, #1a1a1a 0%, var(--clr-bg-0) 70%);
@@ -207,12 +207,12 @@ body {
   }
   
   .stage {
-    padding: 30px 12px 12px;
+    padding: 45px 12px 12px;
     align-items: flex-start;
   }
   
   .canvas-frame {
-    padding: 8px 12px 12px;
+    padding: 5px 12px 12px;
   }
 }
 
@@ -853,12 +853,12 @@ input[type="range"]::-moz-range-thumb {
   }
 
   .stage {
-    padding: 35px 10px 10px !important;
+    padding: 50px 10px 10px !important;
     align-items: flex-start !important;
   }
 
   .canvas-frame {
-    padding: 5px 12px 12px !important;
+    padding: 3px 12px 12px !important;
   }
 
   .log-container.expanded {

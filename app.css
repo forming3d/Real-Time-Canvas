@@ -161,9 +161,9 @@ body {
 .stage {
   position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 5px;
+  padding: 20px 5px 5px;
   height: 100vh !important;
   overflow: hidden !important;
   background: radial-gradient(ellipse at center, #1a1a1a 0%, var(--clr-bg-0) 70%);
@@ -207,7 +207,8 @@ body {
   }
   
   .stage {
-    padding: 12px;
+    padding: 15px 12px 12px;
+    align-items: flex-start;
   }
   
   .canvas-frame {
@@ -852,7 +853,8 @@ input[type="range"]::-moz-range-thumb {
   }
 
   .stage {
-    padding: 10px !important;
+    padding: 15px 10px 10px !important;
+    align-items: flex-start !important;
   }
 
   .log-container.expanded {
@@ -894,7 +896,8 @@ input[type="range"]::-moz-range-thumb {
 
   .stage {
     height: 65vh !important;
-    padding: 5px !important;
+    padding: 10px 5px 5px !important;
+    align-items: flex-start !important;
   }
 
   .section {
@@ -931,7 +934,8 @@ input[type="range"]::-moz-range-thumb {
 
   .stage {
     height: 60vh !important;
-    padding: 10px !important;
+    padding: 12px 10px 10px !important;
+    align-items: flex-start !important;
   }
 
   .page-logo {

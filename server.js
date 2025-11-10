@@ -34,23 +34,40 @@ function leaveRoom(ws) {
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const room = (url.searchParams.get('room') || 'DEFAULT').toUpperCase();
+  const clientIp = req.socket.remoteAddress;
   joinRoom(ws, room);
+
+  console.log(`✅ Cliente conectado a sala: ${room} (IP: ${clientIp}). Total en sala: ${rooms.get(room)?.size || 0}`);
 
   // saludo
   try { ws.send(JSON.stringify({ type: 'hello', payload: { room } })); } catch { }
 
   // reenvía a OTROS clientes de la sala (texto o binario)
   ws.on('message', (data, isBinary) => {
+    const dataType = isBinary ? 'BINARIO' : 'TEXTO';
+    const dataSize = data.length || data.byteLength || 0;
+    const preview = !isBinary && data.length < 100 ? data.toString() : '';
+    
+    console.log(`📥 [${room}] Recibido ${dataType} (${dataSize} bytes)${preview ? ': ' + preview : ''}`);
+    
     const set = rooms.get(room);
     if (!set) return;
+    
+    let sent = 0;
     for (const client of set) {
       if (client !== ws && client.readyState === WebSocket.OPEN) {
         client.send(data, { binary: isBinary });
+        sent++;
       }
     }
+    
+    console.log(`📤 [${room}] Reenviado a ${sent} cliente(s)`);
   });
 
-  ws.on('close', () => leaveRoom(ws));
+  ws.on('close', () => {
+    leaveRoom(ws);
+    console.log(`🔌 Cliente desconectado de sala: ${room}. Quedan: ${rooms.get(room)?.size || 0}`);
+  });
 });
 
 const PORT = process.env.PORT || 8080;

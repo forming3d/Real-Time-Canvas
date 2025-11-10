@@ -23,15 +23,27 @@ export function useWebSocket(opts: UseWSOpts) {
       ws.binaryType = "arraybuffer";        // recibir/enviar binario (PNG final)
       wsRef.current = ws;
 
-      ws.onopen = () => { if (dead) return; setConnected(true); onOpen?.(); };
+      ws.onopen = () => { 
+        if (dead) return; 
+        console.log('✅ WebSocket conectado:', url);
+        setConnected(true); 
+        onOpen?.(); 
+      };
       ws.onclose = () => {
         if (dead) return;
+        console.log('🔌 WebSocket desconectado');
         setConnected(false);
         onClose?.();
         timer = setTimeout(connect, reconnectMs);
       };
-      ws.onerror = (ev) => { onError?.(ev); };
-      ws.onmessage = (ev) => { onMessage?.(ev); };
+      ws.onerror = (ev) => { 
+        console.error('❌ WebSocket error:', ev);
+        onError?.(ev); 
+      };
+      ws.onmessage = (ev) => { 
+        console.log('📥 Mensaje recibido:', typeof ev.data, ev.data instanceof ArrayBuffer ? `${ev.data.byteLength} bytes` : ev.data.substring(0, 100));
+        onMessage?.(ev); 
+      };
     };
 
     connect();
@@ -40,21 +52,35 @@ export function useWebSocket(opts: UseWSOpts) {
 
   const sendJSON = useCallback((obj: any) => {
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
-    ws.send(JSON.stringify(obj));
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      console.warn('❌ WebSocket no está abierto. Estado:', ws?.readyState);
+      return false;
+    }
+    const payload = JSON.stringify(obj);
+    console.log('📤 Enviando JSON:', obj.type, payload.substring(0, 100));
+    ws.send(payload);
     return true;
   }, []);
 
   const sendText = useCallback((text: string) => {
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      console.warn('❌ WebSocket no está abierto');
+      return false;
+    }
+    console.log('📤 Enviando texto:', text.substring(0, 100));
     ws.send(text);
     return true;
   }, []);
 
   const sendBinary = useCallback((bin: Blob | ArrayBuffer | Uint8Array) => {
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      console.warn('❌ WebSocket no está abierto');
+      return false;
+    }
+    const size = bin instanceof Blob ? bin.size : bin.byteLength;
+    console.log('📤 Enviando binario:', size, 'bytes');
     ws.send(bin);
     return true;
   }, []);

@@ -117,11 +117,15 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(
 
         if (!drawing.current) {
           drawing.current = true;
+          console.log('✏️ DrawingCanvas: Iniciando dibujo');
           onDrawStart?.();
         }
 
         // Frame live inmediato
-        if (connected && onLiveFrame) onLiveFrame(c);
+        if (connected && onLiveFrame) {
+          console.log('🎨 DrawingCanvas: Enviando frame onDown');
+          onLiveFrame(c);
+        }
       };
 
       const onMove = (e: PointerEvent) => {
@@ -148,8 +152,12 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(
 
         if (lastPts.current.size === 0 && drawing.current) {
           drawing.current = false;
+          console.log('✅ DrawingCanvas: Finalizando dibujo');
           onDrawEnd?.();
-          if (onFinalBlob) c.toBlob((b) => b && onFinalBlob(b), "image/png", 1);
+          if (onFinalBlob) {
+            console.log('🖼️ DrawingCanvas: Generando blob final');
+            c.toBlob((b) => b && onFinalBlob(b), "image/png", 1);
+          }
         }
       };
 

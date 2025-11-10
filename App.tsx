@@ -129,7 +129,10 @@ export default function App() {
 
   // ---- PROTOCOLO ALINEADO CON TU TOUCH ----
   const sendLiveFrame = useCallback((canvas: HTMLCanvasElement, opts: { liveMax: number; liveJpegQ: number }) => {
-    if (!connected) return;
+    if (!connected) {
+      console.warn('⚠️ sendLiveFrame: No conectado');
+      return;
+    }
     const { liveMax, liveJpegQ } = opts;
     const dpr = window.devicePixelRatio || 1;
     const W = canvas.width / dpr, H = canvas.height / dpr;
@@ -145,26 +148,43 @@ export default function App() {
     } else {
       dataUrl = canvas.toDataURL('image/jpeg', liveJpegQ);
     }
+    console.log('🎨 Enviando frame live (JPEG)');
     // payload STRING
     sendJSON({ type: 'draw', payload: dataUrl });
   }, [connected, sendJSON]);
 
   const handleFinalBlob = useCallback((blob: Blob) => {
-    if (!connected) return;
+    if (!connected) {
+      console.warn('⚠️ handleFinalBlob: No conectado');
+      return;
+    }
+    console.log('🖼️ Enviando PNG final (binario):', blob.size, 'bytes');
     // PNG final BINARIO (onReceiveBinary en Touch)
     sendBinary(blob);
     addLog('PNG final enviado (binario)', 'success');
   }, [connected, sendBinary, addLog]);
 
   const sendState = useCallback((state: 'drawing:start' | 'drawing:end') => {
-    if (!connected) return;
+    if (!connected) {
+      console.warn('⚠️ sendState: No conectado');
+      return;
+    }
+    console.log('🔄 Enviando estado:', state);
     sendJSON({ type: 'state', payload: state }); // STRING
   }, [connected, sendJSON]);
 
   const sendPrompt = useCallback(() => {
-    if (!connected) return;
+    if (!connected) {
+      console.warn('⚠️ sendPrompt: No conectado');
+      addLog('Error: No hay conexión WebSocket', 'error');
+      return;
+    }
     const text = prompt.trim();
-    if (!text) return;
+    if (!text) {
+      console.warn('⚠️ sendPrompt: Texto vacío');
+      return;
+    }
+    console.log('💬 Enviando prompt:', text);
     sendJSON({ type: 'proc', payload: text });  // STRING plano
     addLog(`Prompt enviado: ${text}`, 'success');
   }, [connected, prompt, sendJSON, addLog]);

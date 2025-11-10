@@ -715,12 +715,15 @@ input[type="range"]::-moz-range-thumb {
   }
 
   .canvas-frame {
-    width: 200px !important;
-    max-width: 200px !important;
+    width: 45vmin !important;
+    max-width: 350px !important;
   }
 
   .stage {
     padding: 10px !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
   }
 
   .log-container.expanded {

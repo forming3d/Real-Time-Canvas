@@ -284,15 +284,15 @@ export default function App() {
             recent={colorHistory}
             onPickRecent={(hex) => setBrushColor(hex)}
           />
-          <div className="image-upload" style={{ marginTop: 12 }}>
+          <div className="image-upload" style={{ marginTop: 6 }}>
             <button className="btn btn-ghost btn-pill btn-xs" onClick={() => setShowPalettePanel(v => !v)}>
-              {showPalettePanel ? <ChevronUpIcon className="toggle-icon" /> : <ChevronDownIcon className="toggle-icon" />} Opciones de paleta
+              {showPalettePanel ? <ChevronUpIcon className="toggle-icon" /> : <ChevronDownIcon className="toggle-icon" />} Paleta
             </button>
             {showPalettePanel && (
               <>
-                <input type="file" accept="image/*" onChange={handleImageUpload} aria-label="Subir imagen para extraer paleta" style={{ marginTop: 8 }} />
+                <input type="file" accept="image/*" onChange={handleImageUpload} aria-label="Subir imagen para extraer paleta" style={{ marginTop: 5 }} />
                 {colorHistory.length > 0 && (
-                  <div className="palette" style={{ marginTop: 10 }}>
+                  <div className="palette" style={{ marginTop: 6 }}>
                     {colorHistory.map((c, i) => (
                       <button key={c + i} className="swatch" style={{ backgroundColor: c }}
                         onClick={() => setBrushColor(c)} aria-label={`Seleccionar color ${c}`} title={c} />
@@ -308,18 +308,18 @@ export default function App() {
           <h3>Pincel</h3>
           <div className="slider-container">
             <label>
-              <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
+              <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px' }}>
                 <span>Grosor</span>
-                <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600 }}>{brushSize}px</span>
+                <span style={{ fontSize: '9px', color: '#7c3aed', fontWeight: 600 }}>{brushSize}px</span>
               </span>
               <input type="range" min={1} max={80} value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} aria-label="Grosor del pincel" />
             </label>
           </div>
           <div className="slider-container">
             <label>
-              <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
+              <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px' }}>
                 <span>Opacidad</span>
-                <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600 }}>{brushOpacity}%</span>
+                <span style={{ fontSize: '9px', color: '#7c3aed', fontWeight: 600 }}>{brushOpacity}%</span>
               </span>
               <input type="range" min={1} max={100} value={brushOpacity} onChange={(e) => setBrushOpacity(Number(e.target.value))} aria-label="Opacidad del pincel" />
             </label>

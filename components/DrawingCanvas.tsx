@@ -1,246 +1,176 @@
-// DrawingCanvas.tsx
-import React, { ForwardedRef, useEffect, useRef } from 'react';
+import React, { useEffect, useImperativeHandle, useRef } from "react";
 
 type Props = {
   width: number;
   height: number;
-  brushSize: number;
-  brushColor: string;
-  brushOpacity?: number;
-  eraser?: boolean;
-  liveFps?: number;         // 6–10 recomendable
-  liveJpegQ?: number;       // 0.4–0.6 recomendable
-  liveMax?: number;         // 224–320 recomendado (reducción para live)
-  onFinalBlob?: (blob: Blob) => void;  // PNG final
-  onDrawStart?: () => void;            // -> enviar state:drawing:start
-  onDrawEnd?: () => void;              // -> enviar state:drawing:end
+  brushSize: number;         // px
+  brushColor: string;        // #rrggbb
+  brushOpacity: number;      // 1..100
+  eraser: boolean;
   connected?: boolean;
-  onLiveFrame?: (canvas: HTMLCanvasElement, opts: { liveMax: number; liveJpegQ: number }) => void;
+  onLiveFrame?: (canvas: HTMLCanvasElement) => void;
+  onFinalBlob?: (blob: Blob) => void;
+  onDrawStart?: () => void;
+  onDrawEnd?: () => void;
 };
 
-const setForwardedRef = (
-  node: HTMLCanvasElement | null,
-  ref: ForwardedRef<HTMLCanvasElement>
-) => {
-  if (!ref) return;
-  if (typeof ref === 'function') {
-    ref(node);
-  } else {
-    ref.current = node;
-  }
-};
+// Export como named para que coincida con tus imports: { DrawingCanvas }
+export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(
+  (
+    {
+      width,
+      height,
+      brushSize,
+      brushColor,
+      brushOpacity,
+      eraser,
+      connected = false,
+      onLiveFrame,
+      onFinalBlob,
+      onDrawStart,
+      onDrawEnd,
+    },
+    ref
+  ) => {
+    const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
 
-export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(({ 
-  width,
-  height,
-  brushSize,
-  brushColor,
-  brushOpacity = 100,
-  eraser = false,
-  liveFps = 8,
-  liveJpegQ = 0.5,
-  liveMax = 256,
-  onFinalBlob,
-  onDrawStart,
-  onDrawEnd,
-  connected = false,
-  onLiveFrame,
-}, ref) => {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
-  const drawingRef = useRef(false);
-  const pointerIdRef = useRef<number | null>(null);
-  const lastSendRef = useRef(0);
-  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
-  const liveFpsRef = useRef(liveFps);
-  const liveMaxRef = useRef(liveMax);
-  const liveJpegQRef = useRef(liveJpegQ);
-  const onLiveFrameRef = useRef<Props['onLiveFrame']>(onLiveFrame);
-  const onFinalBlobRef = useRef<Props['onFinalBlob']>(onFinalBlob);
-  const onDrawStartRef = useRef<Props['onDrawStart']>(onDrawStart);
-  const onDrawEndRef = useRef<Props['onDrawEnd']>(onDrawEnd);
+    // Estado por puntero (soporta multi-touch)
+    const lastPts = useRef<Map<number, { x: number; y: number }>>(new Map());
+    const drawing = useRef(false);
 
-  useEffect(() => {
-    liveFpsRef.current = liveFps;
-  }, [liveFps]);
+    // Throttle para enviar frames live
+    const lastLiveMs = useRef(0);
+    const LIVE_INTERVAL_MS = 80;
 
-  useEffect(() => {
-    liveMaxRef.current = liveMax;
-  }, [liveMax]);
+    useImperativeHandle(ref, () => canvasRef.current as HTMLCanvasElement);
 
-  useEffect(() => {
-    liveJpegQRef.current = liveJpegQ;
-  }, [liveJpegQ]);
+    // Inicialización / reescala por DPR
+    useEffect(() => {
+      const c = canvasRef.current!;
+      const dpr = window.devicePixelRatio || 1;
+      const targetW = Math.max(1, Math.round(width));
+      const targetH = Math.max(1, Math.round(height));
 
-  useEffect(() => {
-    onLiveFrameRef.current = onLiveFrame;
-  }, [onLiveFrame]);
+      c.width = Math.round(targetW * dpr);
+      c.height = Math.round(targetH * dpr);
+      c.style.width = `${targetW}px`;
+      c.style.height = `${targetH}px`;
 
-  useEffect(() => {
-    onFinalBlobRef.current = onFinalBlob;
-  }, [onFinalBlob]);
+      const ctx = c.getContext("2d");
+      if (!ctx) return;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr); // trabajar en unidades lógicas
+      ctxRef.current = ctx;
+    }, [width, height]);
 
-  useEffect(() => {
-    onDrawStartRef.current = onDrawStart;
-  }, [onDrawStart]);
-
-  useEffect(() => {
-    onDrawEndRef.current = onDrawEnd;
-  }, [onDrawEnd]);
-
-  useEffect(() => {
-    const c = canvasRef.current;
-    if (!c) return;
-    const coarsePointer = typeof window !== 'undefined' && window.matchMedia
-      ? window.matchMedia('(pointer: coarse)').matches
-      : false;
-    const rawDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-    const dpr = Math.max(1, Math.min(coarsePointer ? 1 : 2, rawDpr));
-    c.width = Math.round(width * dpr);
-    c.height = Math.round(height * dpr);
-    c.style.width = `${width}px`;
-    c.style.height = `${height}px`;
-    const ctx = c.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.scale(dpr, dpr);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctxRef.current = ctx;
-  }, [width, height]);
-
-  useEffect(() => {
-    const ctx = ctxRef.current;
-    if (!ctx) return;
-    ctx.globalCompositeOperation = eraser ? 'destination-out' : 'source-over';
-    ctx.strokeStyle = brushColor;
-    ctx.lineWidth = brushSize;
-    ctx.globalAlpha = brushOpacity / 100;
-  }, [brushColor, brushSize, brushOpacity, eraser]);
-
-  const drawLine = (x1: number, y1: number, x2: number, y2: number) => {
-    const ctx = ctxRef.current;
-    if (!ctx) return;
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-  };
-
-  const getPos = (ev: PointerEvent) => {
-    const c = canvasRef.current!;
-    const r = c.getBoundingClientRect();
-    return { x: ev.clientX - r.left, y: ev.clientY - r.top };
-  };
-
-  const onDown = (ev: PointerEvent) => {
-    if (ev.pointerType === 'mouse' && ev.button !== 0) return;
-    ev.preventDefault();
-    const target = ev.target as HTMLElement;
-    pointerIdRef.current = ev.pointerId;
-    if (target && target.setPointerCapture && !target.hasPointerCapture?.(ev.pointerId)) {
-      try {
-        target.setPointerCapture(ev.pointerId);
-      } catch (error) {
-        // iOS Safari todavía no soporta pointer capture en canvas
-      }
-    }
-    drawingRef.current = true;
-    const p = getPos(ev);
-    drawLine(p.x, p.y, p.x + 0.01, p.y + 0.01); // micro-draw
-    lastPointRef.current = p;
-    lastSendRef.current = 0;
-    onDrawStartRef.current?.();
-  };
-
-  const onMove = (ev: PointerEvent) => {
-    if (!drawingRef.current) return;
-    if (pointerIdRef.current !== null && ev.pointerId !== pointerIdRef.current) return;
-    if (ev.pointerType === 'mouse' && ev.buttons === 0) {
-      onUp(ev);
-      return;
-    }
-    ev.preventDefault();
-    const c = canvasRef.current;
-    if (!c) return;
-    const events = (ev.getCoalescedEvents && ev.getCoalescedEvents()) || [ev];
-    const r = c.getBoundingClientRect();
-
-    let prev = lastPointRef.current;
-    for (const e of events) {
-      const x = e.clientX - r.left;
-      const y = e.clientY - r.top;
-      if (prev) drawLine(prev.x, prev.y, x, y);
-      prev = { x, y };
-    }
-    lastPointRef.current = prev;
-
-    // envío en vivo throttled por FPS (se hace desde App con ws)
-    const now = performance.now();
-    const fps = Math.max(1, liveFpsRef.current ?? 1);
-    if (now - lastSendRef.current >= 1000 / fps) {
-      lastSendRef.current = now;
-      const handler = onLiveFrameRef.current;
-      if (handler) {
-        handler(c, { liveMax: liveMaxRef.current, liveJpegQ: liveJpegQRef.current });
-      }
-    }
-  };
-
-  const onUp = (ev: PointerEvent) => {
-    if (pointerIdRef.current !== null && ev.pointerId !== pointerIdRef.current) return;
-    ev.preventDefault();
-    if (!drawingRef.current) return;
-    drawingRef.current = false;
-    pointerIdRef.current = null;
-    lastPointRef.current = null;
-
-    // PNG final (sin bloquear UI)
-    const c = canvasRef.current;
-    if (!c) return;
-    if (c.releasePointerCapture && c.hasPointerCapture?.(ev.pointerId)) {
-      try {
-        c.releasePointerCapture(ev.pointerId);
-      } catch (error) {
-        // navegadores legacy pueden lanzar si pointer capture no está soportado
-      }
-    }
-    c.toBlob((blob) => {
-      const finalHandler = onFinalBlobRef.current;
-      if (blob && finalHandler) finalHandler(blob);
-      onDrawEndRef.current?.();
-    }, 'image/png');
-  };
-
-  useEffect(() => {
-    const c = canvasRef.current;
-    if (!c) return;
-    const opts: AddEventListenerOptions = { passive: false };
-    c.addEventListener('pointerdown', onDown, opts);
-    c.addEventListener('pointermove', onMove, opts);
-    window.addEventListener('pointermove', onMove, opts);
-    window.addEventListener('pointerup', onUp, opts);
-    window.addEventListener('pointercancel', onUp, opts);
-    return () => {
-      c.removeEventListener('pointerdown', onDown);
-      c.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
+    // Helpers
+    const getPos = (e: PointerEvent) => {
+      const c = canvasRef.current!;
+      const rect = c.getBoundingClientRect();
+      return {
+        x: (e.clientX - rect.left),
+        y: (e.clientY - rect.top),
+      };
     };
-  }, []);
 
-  return (
-    <canvas
-      ref={(node) => {
-        canvasRef.current = node;
-        setForwardedRef(node, ref);
-      }}
-      role="img"
-      aria-label="Lienzo interactivo para dibujo en tiempo real"
-      tabIndex={0}
-      className="canvas"
-      data-connected={connected ? 'true' : 'false'}
-    />
-  );
-});
+    const applyBrush = () => {
+      const ctx = ctxRef.current!;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.lineWidth = Math.max(0.5, brushSize);
+      if (eraser) {
+        ctx.globalCompositeOperation = "destination-out";
+        ctx.globalAlpha = 1.0;
+        ctx.strokeStyle = "#000";
+      } else {
+        ctx.globalCompositeOperation = "source-over";
+        ctx.globalAlpha = Math.max(0.01, Math.min(1, brushOpacity / 100));
+        ctx.strokeStyle = brushColor;
+      }
+    };
+
+    const drawSeg = (a: { x: number; y: number }, b: { x: number; y: number }) => {
+      const ctx = ctxRef.current!;
+      applyBrush();
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    };
+
+    // Eventos Pointer (fluido en ratón y táctil)
+    useEffect(() => {
+      const c = canvasRef.current!;
+      const onDown = (e: PointerEvent) => {
+        e.preventDefault();
+        c.setPointerCapture?.(e.pointerId);
+        const p = getPos(e);
+        lastPts.current.set(e.pointerId, p);
+        if (!drawing.current) {
+          drawing.current = true;
+          onDrawStart?.();
+        }
+      };
+
+      const onMove = (e: PointerEvent) => {
+        if (!lastPts.current.has(e.pointerId)) return;
+        e.preventDefault();
+        const p2 = getPos(e);
+        const p1 = lastPts.current.get(e.pointerId)!;
+        drawSeg(p1, p2);
+        lastPts.current.set(e.pointerId, p2);
+
+        // Live frame throttled
+        if (connected && onLiveFrame) {
+          const now = performance.now();
+          if (now - lastLiveMs.current >= LIVE_INTERVAL_MS) {
+            lastLiveMs.current = now;
+            onLiveFrame(c);
+          }
+        }
+      };
+
+      const finishPointer = async (e: PointerEvent) => {
+        if (!lastPts.current.has(e.pointerId)) return;
+        e.preventDefault();
+        lastPts.current.delete(e.pointerId);
+
+        if (lastPts.current.size === 0 && drawing.current) {
+          drawing.current = false;
+          onDrawEnd?.();
+
+          if (onFinalBlob) {
+            // PNG final del trazo
+            c.toBlob((blob) => blob && onFinalBlob(blob), "image/png", 1);
+          }
+        }
+      };
+
+      // Importante: listeners NO pasivos para poder preventDefault
+      c.addEventListener("pointerdown", onDown, { passive: false });
+      c.addEventListener("pointermove", onMove, { passive: false });
+      c.addEventListener("pointerup", finishPointer, { passive: false });
+      c.addEventListener("pointercancel", finishPointer, { passive: false });
+      c.addEventListener("pointerout", finishPointer, { passive: false });
+
+      return () => {
+        c.removeEventListener("pointerdown", onDown);
+        c.removeEventListener("pointermove", onMove);
+        c.removeEventListener("pointerup", finishPointer);
+        c.removeEventListener("pointercancel", finishPointer);
+        c.removeEventListener("pointerout", finishPointer);
+      };
+    }, [brushSize, brushColor, brushOpacity, eraser, connected, onDrawStart, onDrawEnd, onFinalBlob, onLiveFrame]);
+
+    return (
+      <canvas
+        ref={canvasRef}
+        className="canvas"
+        role="img"
+        aria-label="Área de dibujo"
+      />
+    );
+  }
+);
+DrawingCanvas.displayName = "DrawingCanvas";

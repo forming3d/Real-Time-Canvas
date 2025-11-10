@@ -1,11 +1,23 @@
 /* ===== 1) Básicos ===== */
 :root {
   color-scheme: dark;
+  --panel-min: 280px;
+  --panel-ideal: 34vw;
+  --panel-max: 380px;
+
   --log-h-s: 24vh;
   --log-h-m: 32vh;
   --log-h-l: 40vh;
+
+  --clr-primary: #7c3aed;
+  --clr-border: #2a2a2a;
+  --clr-bg-0: #0b0b0b;
+  --clr-bg-1: #121212;
+  --clr-bg-2: #1a1a1a;
+  --clr-text: #e5e7eb;
 }
 
+/* Reset mínimo */
 html,
 body,
 #root {
@@ -14,8 +26,8 @@ body,
 }
 
 body {
-  background: #0b0b0b;
-  color: #e5e7eb;
+  background: var(--clr-bg-0);
+  color: var(--clr-text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
 }
 
@@ -23,12 +35,12 @@ body {
 .app {
   min-height: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+  grid-template-columns: clamp(var(--panel-min), var(--panel-ideal), var(--panel-max)) 1fr;
 }
 
 .panel {
-  border-right: 1px solid #2a2a2a;
-  background: rgba(16, 16, 16, .85);
+  border-right: 1px solid var(--clr-border);
+  background: color-mix(in oklab, var(--clr-bg-2) 85%, transparent);
   backdrop-filter: blur(6px);
 }
 
@@ -45,6 +57,7 @@ body {
   margin: 0 auto;
 }
 
+/* Canvas visible y táctil fluido */
 .canvas {
   display: block;
   width: 100%;
@@ -52,6 +65,9 @@ body {
   background: #0a0a0a;
   border: 1px solid #262626;
   border-radius: 10px;
+
+  /* CLAVE para táctil: evita que el navegador “robe” el gesto */
+  touch-action: none;
 }
 
 /* Logo */
@@ -66,17 +82,18 @@ body {
   z-index: 10;
 }
 
-/* ===== 3) Enlaces / Controles ===== */
+/* ===== 3) Enlaces / Controles / Inputs ===== */
 .btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid #2a2a2a;
+  border: 1px solid var(--clr-border);
   border-radius: 10px;
   background: #262626;
-  color: #e5e7eb;
+  color: var(--clr-text);
   padding: 8px 10px;
   cursor: pointer;
+  user-select: none;
 }
 
 .btn-sm {
@@ -97,12 +114,12 @@ body {
 
 .btn-ghost {
   background: #1a1a1a;
-  border-color: #2a2a2a;
+  border-color: var(--clr-border);
 }
 
 .btn-primary {
-  background: #7c3aed;
-  border-color: #7c3aed;
+  background: var(--clr-primary);
+  border-color: var(--clr-primary);
   color: #fff;
 }
 
@@ -118,8 +135,8 @@ body {
 }
 
 .btn.active {
-  outline: 2px solid #7c3aed88;
-  border-color: #7c3aed;
+  outline: 2px solid color-mix(in oklab, var(--clr-primary) 55%, transparent);
+  border-color: var(--clr-primary);
 }
 
 input[type="text"],
@@ -130,9 +147,9 @@ textarea,
   width: 100%;
   padding: 8px;
   border-radius: 8px;
-  border: 1px solid #2a2a2a;
+  border: 1px solid var(--clr-border);
   background: #0f0f0f;
-  color: #e5e7eb;
+  color: var(--clr-text);
 }
 
 .label-inline {
@@ -143,7 +160,7 @@ textarea,
 
 .section {
   padding: 12px 16px;
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--clr-border);
 }
 
 .info-text {
@@ -168,7 +185,7 @@ input[type="range"] {
   width: 100%;
   appearance: none;
   height: 4px;
-  background: #2a2a2a;
+  background: var(--clr-border);
   border-radius: 3px;
   outline: none;
 }
@@ -178,7 +195,7 @@ input[type="range"]::-webkit-slider-thumb {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #7c3aed;
+  background: var(--clr-primary);
   cursor: pointer;
 }
 
@@ -186,11 +203,11 @@ input[type="range"]::-moz-range-thumb {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #7c3aed;
+  background: var(--clr-primary);
   cursor: pointer;
 }
 
-/* Toolbar de dibujo (pequeña) */
+/* Toolbar de dibujo (compacta) */
 .toolbar {
   display: flex;
   gap: 8px;
@@ -203,15 +220,15 @@ input[type="range"]::-moz-range-thumb {
   height: 16px;
 }
 
-/* “Ver sala” header */
+/* Cabecera “Ver sala” */
 .connection-status {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   padding: 12px 16px;
-  background: #1a1a1a;
-  border-bottom: 1px solid #2a2a2a;
+  background: var(--clr-bg-2);
+  border-bottom: 1px solid var(--clr-border);
 }
 
 .status-indicator {
@@ -235,7 +252,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .collapsible {
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--clr-border);
 }
 
 .collapsible-content {
@@ -260,8 +277,8 @@ input[type="range"]::-moz-range-thumb {
   right: 0;
   bottom: 0;
   max-height: var(--log-h-m);
-  background: #121212;
-  border-top: 1px solid #2a2a2a;
+  background: var(--clr-bg-1);
+  border-top: 1px solid var(--clr-border);
   box-shadow: 0 -6px 20px rgba(0, 0, 0, .45);
   z-index: 2147483647;
   padding-bottom: env(safe-area-inset-bottom, 0);
@@ -272,14 +289,14 @@ input[type="range"]::-moz-range-thumb {
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--clr-border);
   background: #161616;
 }
 
 .log-hide {
   margin-left: auto;
-  border: 1px solid #2a2a2a;
-  background: #2a2a2a;
+  border: 1px solid var(--clr-border);
+  background: var(--clr-border);
   color: #eee;
   padding: 4px 10px;
   border-radius: 8px;
@@ -289,19 +306,42 @@ input[type="range"]::-moz-range-thumb {
 .log-window {
   padding: 12px 16px;
   height: calc(100% - 44px);
-  overflow-y: auto;
+  overflow: auto;
+  /* scroll vertical y horizontal si hace falta */
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  /* Firefox */
+  scrollbar-color: var(--clr-primary) #1a1a1a;
   background: #1a1a1a;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
+
+  /* Reserva espacio fijo para la barra, evita “saltos” del contenido */
+  scrollbar-gutter: stable both-edges;
+}
+
+/* Scrollbar WebKit/Chromium */
+.log-window::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.log-window::-webkit-scrollbar-thumb {
+  background: var(--clr-primary);
+  border-radius: 8px;
+}
+
+.log-window::-webkit-scrollbar-track {
+  background: #1a1a1a;
 }
 
 .log-entry {
   margin-bottom: 6px;
+  white-space: pre-wrap;
 }
 
 .log-entry-info {
-  color: #e5e7eb;
+  color: var(--clr-text);
 }
 
 .log-entry-success {
@@ -321,14 +361,14 @@ input[type="range"]::-moz-range-thumb {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: #7c3aed;
+  background: var(--clr-primary);
   color: white;
   box-shadow: 0 6px 16px rgba(0, 0, 0, .35);
   font-weight: 700;
   cursor: pointer;
 }
 
-/* ColorPicker Pro / paleta */
+/* ColorPicker / paleta */
 .cp-root {
   display: grid;
   gap: 10px;
@@ -346,7 +386,7 @@ input[type="range"]::-moz-range-thumb {
   padding: 6px 8px;
   background: #141414;
   color: #eaeaea;
-  border: 1px solid #2a2a2a;
+  border: 1px solid var(--clr-border);
   border-radius: 8px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
@@ -354,7 +394,7 @@ input[type="range"]::-moz-range-thumb {
 .cp-preview {
   width: 28px;
   height: 28px;
-  border: 1px solid #2a2a2a;
+  border: 1px solid var(--clr-border);
   border-radius: 6px;
 }
 
@@ -369,18 +409,30 @@ input[type="range"]::-moz-range-thumb {
 .swatch {
   width: 28px;
   height: 28px;
-  border: 1px solid #2a2a2a;
+  border: 1px solid var(--clr-border);
   border-radius: 6px;
   cursor: pointer;
 }
 
 .cp-swatch:focus-visible,
 .swatch:focus-visible {
-  outline: 2px solid #7c3aed;
+  outline: 2px solid var(--clr-primary);
   outline-offset: 2px;
 }
 
-/* Responsive */
+/* ===== 5) Responsive ===== */
+/* Tablet horizontal: forzamos 2 columnas, panel ajustable */
+@media (orientation: landscape) and (max-width: 1024px) {
+  .app {
+    grid-template-columns: clamp(260px, 40vw, 360px) 1fr;
+  }
+
+  .log-container.expanded {
+    max-height: 28vh;
+  }
+}
+
+/* Móvil / vertical: panel arriba sticky, stage abajo */
 @media (max-width: 960px) {
   .app {
     grid-template-columns: 1fr;
@@ -389,18 +441,16 @@ input[type="range"]::-moz-range-thumb {
 
   .panel {
     border-right: none;
-    border-bottom: 1px solid #2a2a2a;
+    border-bottom: 1px solid var(--clr-border);
     position: sticky;
     top: 0;
     z-index: 100;
-    background: rgba(16, 16, 16, .85);
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
-    max-height: 50vh;
+    background: color-mix(in oklab, var(--clr-bg-2) 85%, transparent);
+    max-height: 52vh;
   }
 
   .stage {
-    min-height: 50vh;
+    min-height: 48vh;
   }
 
   .canvas-frame {
@@ -421,11 +471,5 @@ input[type="range"]::-moz-range-thumb {
     height: 120px;
     right: 8px;
     bottom: 8px;
-  }
-}
-
-@media (orientation: landscape) and (max-width: 1024px) {
-  .log-container.expanded {
-    max-height: 28vh;
   }
 }

@@ -1,6 +1,5 @@
 import React from "react";
 import { HexColorPicker, HexColorInput } from "react-colorful";
-import "react-colorful/dist/index.css";
 
 export type ColorPickerProProps = {
   value: string;                    // #rrggbb
@@ -19,6 +18,7 @@ const ColorPickerPro: React.FC<ColorPickerProProps> = ({
 }) => {
   return (
     <div className="cp-root" aria-label="Selector de color">
+      {/* Picker principal */}
       <div
         aria-disabled={disabled}
         style={{ opacity: disabled ? 0.5 : 1, pointerEvents: disabled ? "none" : "auto" }}
@@ -26,6 +26,7 @@ const ColorPickerPro: React.FC<ColorPickerProProps> = ({
         <HexColorPicker color={value} onChange={onChange} />
       </div>
 
+      {/* Input HEX + preview */}
       <div className="cp-row" role="group" aria-label="Entrada manual de color">
         <span>#</span>
         <HexColorInput
@@ -39,6 +40,7 @@ const ColorPickerPro: React.FC<ColorPickerProProps> = ({
         <div className="cp-preview" style={{ background: value }} aria-hidden />
       </div>
 
+      {/* Swatches de recientes/paleta */}
       {recent.length > 0 && (
         <div className="cp-recent" role="list" aria-label="Colores recientes">
           {recent.map((c, i) => (

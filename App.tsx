@@ -235,6 +235,9 @@ export default function App() {
 
   return (
     <main className="app">
+      {/* Logo fijo en esquina inferior derecha */}
+      <img src="/logo.png" alt="Logo" className="page-logo" />
+
       {/* Panel izquierdo */}
       <aside role="complementary" aria-label="Panel de control" className="panel">
         <div className="connection-status">
@@ -297,7 +300,7 @@ export default function App() {
               </button>
               <button className="btn btn-muted btn-sm" onClick={undo} disabled={!canUndo} title="Deshacer"><UndoIcon className="tool-icon" /></button>
               <button className="btn btn-muted btn-sm" onClick={redo} disabled={!canRedo} title="Rehacer"><RedoIcon className="tool-icon" /></button>
-              <button className="btn btn-danger btn-sm" onClick={clearCanvas} aria-label="Borrar lienzo">Limpiar</button>
+              <button className="btn btn-danger btn-sm btn-full-width" onClick={clearCanvas} aria-label="Borrar lienzo">Limpiar Canvas</button>
             </div>
           </div>
 
@@ -349,9 +352,6 @@ export default function App() {
             connected={connected}
           />
         </div>
-
-        {/* Logo debajo del canvas */}
-        <img src="/logo.png" alt="Logo" className="page-logo" />
 
         {/* LOG */}
         <div className={`log-container ${showLogPanel ? 'expanded' : ''}`} role="region" aria-label="Consola de eventos">

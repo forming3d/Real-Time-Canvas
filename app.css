@@ -87,7 +87,7 @@ body {
 }
 
 .canvas-frame {
-  width: min(90%, 50vmin, 450px);
+  width: min(90%, 45vmin, 400px);
   margin: 0 auto;
 }
 
@@ -111,11 +111,13 @@ body {
 
 /* Logo */
 .page-logo {
+  position: fixed;
+  right: 10px;
+  bottom: 10px;
   width: 50px;
   height: 50px;
   opacity: .4;
-  margin: 10px 0 0 0;
-  display: block;
+  z-index: 5;
 }
 
 /* ===== 3) Enlaces/Controles ===== */
@@ -259,14 +261,22 @@ input[type="file"] {
 .buttons-section {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 4px;
+  gap: 6px;
   align-content: start;
 }
 
 .buttons-section .btn {
-  font-size: 9px;
-  padding: 4px 6px;
+  font-size: 11px;
+  padding: 8px 10px;
   white-space: nowrap;
+  min-height: 36px;
+}
+
+.buttons-section .btn-full-width {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  padding: 10px 12px;
+  min-height: 40px;
 }
 
 .info-text {
@@ -669,12 +679,20 @@ input[type="range"]::-moz-range-thumb {
 
   .buttons-section {
     grid-template-columns: 1fr 1fr !important;
-    gap: 3px !important;
+    gap: 5px !important;
   }
 
   .buttons-section .btn {
-    font-size: 8px !important;
-    padding: 3px 4px !important;
+    font-size: 10px !important;
+    padding: 6px 8px !important;
+    min-height: 32px !important;
+  }
+
+  .buttons-section .btn-full-width {
+    grid-column: 1 / -1 !important;
+    font-size: 11px !important;
+    padding: 8px 10px !important;
+    min-height: 36px !important;
   }
 
   .cp-input {
@@ -688,14 +706,17 @@ input[type="range"]::-moz-range-thumb {
   }
 
   .page-logo {
-    width: 40px !important;
-    height: 40px !important;
-    margin: 8px 0 0 0 !important;
+    position: fixed !important;
+    right: 10px !important;
+    bottom: 10px !important;
+    width: 45px !important;
+    height: 45px !important;
+    z-index: 5 !important;
   }
 
   .canvas-frame {
-    width: 250px !important;
-    max-width: 250px !important;
+    width: 200px !important;
+    max-width: 200px !important;
   }
 
   .stage {

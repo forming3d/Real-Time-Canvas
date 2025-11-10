@@ -20,7 +20,7 @@ export function useWebSocket(opts: UseWSOpts) {
 
     const connect = () => {
       const ws = new WebSocket(url);
-      ws.binaryType = "arraybuffer";         // ⬅️ recibimos/enviamos binario
+      ws.binaryType = "arraybuffer";        // recibir/enviar binario (PNG final)
       wsRef.current = ws;
 
       ws.onopen = () => { if (dead) return; setConnected(true); onOpen?.(); };
@@ -40,20 +40,23 @@ export function useWebSocket(opts: UseWSOpts) {
 
   const sendJSON = useCallback((obj: any) => {
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
     ws.send(JSON.stringify(obj));
+    return true;
   }, []);
 
   const sendText = useCallback((text: string) => {
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
     ws.send(text);
+    return true;
   }, []);
 
-  const sendBinary = useCallback((bin: Blob | ArrayBuffer) => {
+  const sendBinary = useCallback((bin: Blob | ArrayBuffer | Uint8Array) => {
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
     ws.send(bin);
+    return true;
   }, []);
 
   return { connected, sendJSON, sendText, sendBinary };

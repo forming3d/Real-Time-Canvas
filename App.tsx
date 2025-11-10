@@ -11,18 +11,18 @@ import ColorPickerPro from './components/ColorPickerPro';
 type CanvasHistoryState = { dataUrl: string };
 type LogEntry = { id: number; message: string; type: 'info' | 'error' | 'success'; timestamp: number };
 
-const randomRoomId = () => Math.random().toString(36).slice(2, 8).toUpperCase();
-
-// WS en /ws (mismo host del front). Si necesitas forzar dominio, expón VITE_WS_ORIGIN.
+// WS en /ws (misma instancia). Si quieres forzar dominio, usa VITE_WS_ORIGIN.
 const WS_URL = (room: string) => {
-  const origin = (import.meta as any).env?.VITE_WS_ORIGIN as string | undefined;
-  if (origin) {
-    const proto = origin.startsWith('https') ? 'wss' : 'ws';
-    return `${proto}://${origin.replace(/^https?:\/\//, '')}/ws?room=${encodeURIComponent(room)}`;
+  const forced = (import.meta as any).env?.VITE_WS_ORIGIN as string | undefined;
+  if (forced) {
+    const proto = forced.startsWith('https') ? 'wss' : 'ws';
+    return `${proto}://${forced.replace(/^https?:\/\//, '')}/ws?room=${encodeURIComponent(room)}`;
   }
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   return `${proto}://${location.host}/ws?room=${encodeURIComponent(room)}`;
 };
+
+const randomRoomId = () => Math.random().toString(36).slice(2, 8).toUpperCase();
 
 export default function App() {
   const initialRoom = useMemo(() => randomRoomId(), []);
@@ -52,33 +52,30 @@ export default function App() {
   const stageRef = useRef<HTMLElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Historial para Undo/Redo por imagen
   const { state: canvasHistoryState, setState: setCanvasHistoryState, undo, redo, canUndo, canRedo } =
     useHistory<CanvasHistoryState | null>(null);
 
-  // ---- WebSocket ----
   const addLog = useCallback((message: string, type: LogEntry['type'] = 'info') => {
     setLogs(prev => [...prev, { id: nextLogId, message, type, timestamp: Date.now() }]);
     setNextLogId(n => n + 1);
   }, [nextLogId]);
 
   const handleSocketMessage = useCallback((event: MessageEvent) => {
-    if (typeof event.data === 'string') {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg?.type === 'hello' && msg?.payload?.room) {
-          const serverRoom = String(msg.payload.room).toUpperCase();
-          setRoom(serverRoom);
-          setRoomInput(serverRoom);
-          addLog(`Conectado a sala: ${serverRoom}`, 'success');
-        } else if (msg?.type === 'state') {
-          addLog(`Estado recibido: ${String(msg?.payload)}`, 'info');
-        } else if (msg?.type === 'proc') {
-          addLog(`Proc recibido: ${String(msg?.payload)}`, 'info');
-        }
-      } catch {
-        // otros mensajes de texto no JSON: ignorar
+    if (typeof event.data !== 'string') return;
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg?.type === 'hello' && msg?.payload?.room) {
+        const serverRoom = String(msg.payload.room).toUpperCase();
+        setRoom(serverRoom);
+        setRoomInput(serverRoom);
+        addLog(`Conectado a sala: ${serverRoom}`, 'success');
+      } else if (msg?.type === 'state') {
+        addLog(`Estado recibido: ${String(msg?.payload)}`, 'info');
+      } else if (msg?.type === 'proc') {
+        addLog(`Proc recibido: ${String(msg?.payload)}`, 'info');
       }
+    } catch {
+      // ignorar textos no-JSON
     }
   }, [addLog]);
 
@@ -90,54 +87,47 @@ export default function App() {
 
   // Auto-scroll log
   useEffect(() => {
-    if (logScrollRef.current)
-      logScrollRef.current.scrollTop = logScrollRef.current.scrollHeight;
+    const el = logScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [logs]);
 
-  // Toggle Log con tecla L
+  // Tecla L muestra/oculta LOG
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key.toLowerCase() === 'l') setShowLogPanel(v => !v); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Tamaño canvas adaptado (tablet horizontal)
+  // Tamaño canvas responsive (tablet horizontal)
   useEffect(() => {
     const stageEl = stageRef.current;
     if (!stageEl) return;
-    const computeSize = () => {
+    const compute = () => {
       const b = stageEl.getBoundingClientRect();
-      const available = Math.max(0, b.width - 40);
-      const next = Math.round(Math.min(512, Math.max(256, available || 512)));
+      const avail = Math.max(0, b.width - 40);
+      const next = Math.round(Math.min(512, Math.max(256, avail || 512)));
       setCanvasSize(prev => (Math.abs(prev - next) > 1 ? next : prev));
     };
-    computeSize();
+    compute();
     let ro: ResizeObserver | null = null;
-    if ('ResizeObserver' in window) { ro = new ResizeObserver(computeSize); ro.observe(stageEl); }
-    else { window.addEventListener('resize', computeSize); }
-    return () => { ro?.disconnect(); window.removeEventListener('resize', computeSize); };
+    if ('ResizeObserver' in window) { ro = new ResizeObserver(compute); ro.observe(stageEl); }
+    else { window.addEventListener('resize', compute); }
+    return () => { ro?.disconnect(); window.removeEventListener('resize', compute); };
   }, []);
 
-  // Restaurar snapshot sin re-escalar (coordenadas lógicas)
+  // Restaurar snapshot sin re-escalar
   useEffect(() => {
     if (!canvasHistoryState?.dataUrl || !canvasRef.current) return;
     const c = canvasRef.current;
     const ctx = c.getContext('2d'); if (!ctx) return;
-
     const dpr = window.devicePixelRatio || 1;
     const W = c.width / dpr, H = c.height / dpr;
-
     const img = new Image();
     img.onload = () => { ctx.clearRect(0, 0, W, H); ctx.drawImage(img, 0, 0, W, H); };
     img.src = canvasHistoryState.dataUrl;
   }, [canvasHistoryState]);
 
-  // --- PROTOCOLO ALINEADO CON TU TOUCH --- //
-  // draw       -> payload: string "data:image/jpeg;base64,..."
-  // state      -> payload: string "drawing:start" | "drawing:end"
-  // proc/prompt-> payload: string "texto"
-  // final PNG  -> binario (onReceiveBinary)
-
+  // ---- PROTOCOLO ALINEADO CON TU TOUCH ----
   const sendLiveFrame = useCallback((canvas: HTMLCanvasElement, opts: { liveMax: number; liveJpegQ: number }) => {
     if (!connected) return;
     const { liveMax, liveJpegQ } = opts;
@@ -155,32 +145,31 @@ export default function App() {
     } else {
       dataUrl = canvas.toDataURL('image/jpeg', liveJpegQ);
     }
-    // payload como STRING
+    // payload STRING
     sendJSON({ type: 'draw', payload: dataUrl });
   }, [connected, sendJSON]);
 
-  const handleFinalBlob = useCallback(async (blob: Blob) => {
+  const handleFinalBlob = useCallback((blob: Blob) => {
     if (!connected) return;
-    // PNG final en binario => onReceiveBinary en Touch
+    // PNG final BINARIO (onReceiveBinary en Touch)
     sendBinary(blob);
     addLog('PNG final enviado (binario)', 'success');
   }, [connected, sendBinary, addLog]);
 
   const sendState = useCallback((state: 'drawing:start' | 'drawing:end') => {
     if (!connected) return;
-    sendJSON({ type: 'state', payload: state });
+    sendJSON({ type: 'state', payload: state }); // STRING
   }, [connected, sendJSON]);
 
   const sendPrompt = useCallback(() => {
     if (!connected) return;
     const text = prompt.trim();
     if (!text) return;
-    // STRING plano (no {text:...})
-    sendJSON({ type: 'proc', payload: text });
+    sendJSON({ type: 'proc', payload: text });  // STRING plano
     addLog(`Prompt enviado: ${text}`, 'success');
   }, [connected, prompt, sendJSON, addLog]);
 
-  // Extraer paleta de imagen
+  // Paleta por imagen (simple)
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
@@ -228,9 +217,8 @@ export default function App() {
     <main className="app">
       <img src="/logo.png" alt="Logo" className="page-logo" />
 
-      {/* Panel */}
+      {/* Panel izquierdo */}
       <aside role="complementary" aria-label="Panel de control" className="panel">
-        {/* Estado + Ver sala */}
         <div className="connection-status">
           <div className="status-indicator">
             <div className={`status-dot ${connected ? 'connected' : 'disconnected'}`} />
@@ -260,7 +248,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Prompt */}
         <div className="section">
           <label>
             Prompt
@@ -269,7 +256,6 @@ export default function App() {
           <button type="button" className="btn btn-primary btn-sm" onClick={sendPrompt}>Enviar</button>
         </div>
 
-        {/* Color */}
         <div className="section">
           <h3>Color</h3>
           <ColorPickerPro
@@ -298,7 +284,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Pincel */}
         <div className="section">
           <h3>Pincel</h3>
           <div className="slider-container">
@@ -339,9 +324,8 @@ export default function App() {
             onLiveFrame={(c) => sendLiveFrame(c, { liveMax: 256, liveJpegQ: 0.5 })}
             onFinalBlob={(b) => { handleFinalBlob(b); }}
             onDrawStart={() => {
-              // 1) Desbloquea JPEG en vivo en Touch
+              // Desbloquear JPEG y enviar primer frame por si no hay movimiento
               sendState('drawing:start');
-              // 2) Envía un primer frame inmediato (por si el usuario toca y no mueve)
               const c = canvasRef.current; if (c) sendLiveFrame(c, { liveMax: 256, liveJpegQ: 0.5 });
             }}
             onDrawEnd={() => {
@@ -370,7 +354,7 @@ export default function App() {
         </div>
       </section>
 
-      {/* FAB del log */}
+      {/* FAB Log */}
       <button
         className="log-fab"
         aria-label={showLogPanel ? 'Ocultar log' : 'Mostrar log'}

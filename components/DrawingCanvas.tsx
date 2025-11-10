@@ -27,7 +27,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
 
-    // Multi-touch: estado por pointerId
+    // Multi-touch: un punto por pointerId
     const lastPts = useRef<Map<number, { x: number; y: number }>>(new Map());
     const drawing = useRef(false);
 
@@ -37,7 +37,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(
 
     useImperativeHandle(ref, () => canvasRef.current as HTMLCanvasElement);
 
-    // Inicializa/escala por DPR una sola vez o cuando cambia width/height
+    // Inicializa por DPR cuando cambia tamaño lógico
     useEffect(() => {
       const c = canvasRef.current!;
       const dpr = window.devicePixelRatio || 1;
@@ -61,8 +61,8 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(
 
     const getPos = (e: PointerEvent) => {
       const c = canvasRef.current!;
-      const rect = c.getBoundingClientRect();
-      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      const r = c.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
     };
 
     const applyBrush = () => {
@@ -95,18 +95,15 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(
       applyBrush();
       ctx.beginPath();
       ctx.arc(p.x, p.y, Math.max(0.5, brushSize / 2), 0, Math.PI * 2);
-      ctx.fillStyle = eraser ? "#000" : ctx.strokeStyle as string;
       if (eraser) {
-        // para borrar con "punto": usar stroke con destination-out
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, Math.max(0.5, brushSize / 2), 0, Math.PI * 2);
+        ctx.fillStyle = "#000";
         ctx.fill();
       } else {
+        ctx.fillStyle = ctx.strokeStyle as string;
         ctx.fill();
       }
     };
 
-    // Pointer Events (ratón + táctil)
     useEffect(() => {
       const c = canvasRef.current!;
       const onDown = (e: PointerEvent) => {
@@ -115,7 +112,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(
         const p = getPos(e);
         lastPts.current.set(e.pointerId, p);
 
-        // Dibuja un punto inmediato (tap sin mover)
+        // Punto inmediato para "tap"
         drawDot(p);
 
         if (!drawing.current) {
@@ -123,10 +120,8 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(
           onDrawStart?.();
         }
 
-        // Primer frame live inmediato
-        if (connected && onLiveFrame) {
-          onLiveFrame(c);
-        }
+        // Frame live inmediato
+        if (connected && onLiveFrame) onLiveFrame(c);
       };
 
       const onMove = (e: PointerEvent) => {
@@ -158,7 +153,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(
         }
       };
 
-      // Listeners NO pasivos (para poder preventDefault)
+      // Listeners no pasivos para poder preventDefault
       c.addEventListener("pointerdown", onDown, { passive: false });
       c.addEventListener("pointermove", onMove, { passive: false });
       c.addEventListener("pointerup", finishPointer, { passive: false });
@@ -174,14 +169,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(
       };
     }, [brushSize, brushColor, brushOpacity, eraser, connected, onDrawStart, onDrawEnd, onFinalBlob, onLiveFrame]);
 
-    return (
-      <canvas
-        ref={canvasRef}
-        className="canvas"
-        role="img"
-        aria-label="Área de dibujo"
-      />
-    );
+    return <canvas ref={canvasRef} className="canvas" role="img" aria-label="Área de dibujo" />;
   }
 );
 DrawingCanvas.displayName = "DrawingCanvas";

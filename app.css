@@ -6,22 +6,11 @@
   --log-h-l: 40vh;
 }
 
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
-  overscroll-behavior: contain;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
-}
-
-/* === Layout === */
+/* === Estructura === */
 .app {
   min-height: 100%;
   display: grid;
   grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
-  grid-template-rows: 1fr;
   background: #0b0b0b;
   color: #e5e7eb;
 }
@@ -30,7 +19,6 @@ body,
   border-right: 1px solid #2a2a2a;
   background: rgba(16, 16, 16, 0.85);
   backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
 }
 
 .stage {
@@ -58,58 +46,91 @@ body,
   z-index: 10;
 }
 
-/* === Controles / botones === */
-.row,
-.col {
-  display: grid;
-  gap: 10px;
-  padding: 12px 16px;
-}
-
-.row {
-  grid-template-columns: 1fr;
-  border-bottom: 1px solid #2a2a2a;
-}
-
-.col {
-  border-bottom: 1px solid #2a2a2a;
-}
-
-.btn,
-.dropdown-toggle,
-.connect-button,
-.disconnect-button,
-.action-button,
-.history-button,
-.tool-button,
-.send-button,
-.btn-join {
+/* === Enlaces/Controles (botones y campos) === */
+.btn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  background: #262626;
+  gap: 6px;
   border: 1px solid #2a2a2a;
+  border-radius: 10px;
+  background: #262626;
   color: #e5e7eb;
-  border-radius: 8px;
   padding: 8px 10px;
   cursor: pointer;
 }
 
-.connect-button {
-  background: #1f2937;
+.btn-sm {
+  padding: 6px 8px;
+  font-size: 12px;
+  border-radius: 8px;
 }
 
-.disconnect-button {
-  background: #3f1f1f;
+.btn-xs {
+  padding: 4px 6px;
+  font-size: 12px;
+  border-radius: 999px;
 }
 
-.action-button.clear {
-  background: #3b1f1f;
+.btn-pill {
+  border-radius: 999px;
 }
 
-.tool-button.active {
-  outline: 2px solid #7c3aed88;
+.btn-ghost {
+  background: #1a1a1a;
+  border-color: #2a2a2a;
+}
+
+.btn-primary {
+  background: #7c3aed;
   border-color: #7c3aed;
+  color: white;
+}
+
+.btn-muted {
+  background: #202020;
+  color: #aaa;
+}
+
+.btn-danger {
+  background: #3b1f1f;
+  color: #fca5a5;
+  border-color: #5b2424;
+}
+
+input[type="text"],
+input[type="search"],
+input:not([type]),
+textarea,
+.room-link {
+  width: 100%;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #2a2a2a;
+  background: #0f0f0f;
+  color: #e5e7eb;
+}
+
+.label-inline {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.section {
+  padding: 12px 16px;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.info-text {
+  margin: 0 0 10px 0;
+  color: #cbd5e1;
+}
+
+.room-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
 }
 
 /* Sliders */
@@ -129,22 +150,35 @@ input[type="range"] {
 
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: #7c3aed;
   cursor: pointer;
 }
 
 input[type="range"]::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: #7c3aed;
   cursor: pointer;
 }
 
-/* === Section titles / áreas === */
+/* Toolbar de dibujo (botones pequeños) */
+.toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.toolbar .btn.active {
+  outline: 2px solid #7c3aed88;
+  border-color: #7c3aed;
+}
+
+/* === “Ver sala” header === */
 .connection-status {
   display: flex;
   align-items: center;
@@ -175,23 +209,16 @@ input[type="range"]::-moz-range-thumb {
   background: #ef4444;
 }
 
+.collapsible {
+  border-bottom: 1px solid #2a2a2a;
+}
+
 .collapsible-content {
   padding: 12px 16px;
   overflow: hidden;
 }
 
-.prompt-row textarea {
-  width: 100%;
-  min-height: 72px;
-  resize: vertical;
-  background: #0f0f0f;
-  color: #e5e7eb;
-  border: 1px solid #2a2a2a;
-  border-radius: 8px;
-  padding: 8px;
-}
-
-/* === LOG (responsive + fab) === */
+/* === LOG (ya pequeño en landscape y con FAB) === */
 .log-container {
   max-height: 0;
   overflow: hidden;
@@ -260,15 +287,14 @@ input[type="range"]::-moz-range-thumb {
   color: #f87171;
 }
 
-/* Botón flotante LOG */
 .log-fab {
   position: fixed;
   right: 12px;
   bottom: 12px;
   z-index: 2147483647;
   border: 0;
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: #7c3aed;
   color: white;
@@ -277,7 +303,7 @@ input[type="range"]::-moz-range-thumb {
   cursor: pointer;
 }
 
-/* === ColorPicker Pro (wrapper) === */
+/* === ColorPicker Pro overrides === */
 .cp-root {
   display: grid;
   gap: 10px;
@@ -350,7 +376,6 @@ input[type="range"]::-moz-range-thumb {
 
   .stage {
     min-height: 50vh;
-    position: relative;
   }
 
   .canvas-frame {
@@ -374,7 +399,7 @@ input[type="range"]::-moz-range-thumb {
   }
 }
 
-/* Landscape: reduce altura del log en tablets/móviles */
+/* Landscape: log algo más pequeño */
 @media (orientation: landscape) and (max-width: 1024px) {
   .log-container.expanded {
     max-height: 28vh;

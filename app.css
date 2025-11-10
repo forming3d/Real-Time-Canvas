@@ -1,9 +1,9 @@
 /* ===== 1) Básicos ===== */
 :root {
   color-scheme: dark;
-  --panel-min: 180px;
-  --panel-ideal: 18vw;
-  --panel-max: 240px;
+  --panel-min: 280px;
+  --panel-ideal: 28vw;
+  --panel-max: 350px;
 
   --log-h-s: 22vh;
   --log-h-m: 25vh;
@@ -86,7 +86,7 @@ body {
 }
 
 .canvas-frame {
-  width: min(90%, 45vmin, 380px);
+  width: min(80%, 35vmin, 320px);
   margin: 0 auto;
 }
 
@@ -497,7 +497,7 @@ input[type="range"]::-moz-range-thumb {
 
 .log-fab {
   position: fixed;
-  right: 10px;
+  left: 10px;
   bottom: 10px;
   z-index: 2147483647;
   border: 0;
@@ -591,9 +591,9 @@ input[type="range"]::-moz-range-thumb {
   and (orientation: landscape) {
   
   :root {
-    --panel-min: 200px;
-    --panel-ideal: 20vw;
-    --panel-max: 240px;
+    --panel-min: 260px;
+    --panel-ideal: 26vw;
+    --panel-max: 320px;
   }
 
   html, body {
@@ -606,54 +606,13 @@ input[type="range"]::-moz-range-thumb {
     overflow: hidden !important;
   }
 
-  .section {
-    padding: 4px 8px !important;
-  }
-
-  .section h3 {
-    font-size: 10px !important;
-    margin-bottom: 2px !important;
-  }
-
-  .section label {
-    font-size: 10px !important;
-  }
-
-  .section textarea {
-    min-height: 28px !important;
-    max-height: 45px !important;
-    font-size: 10px !important;
-  }
-
-  .connection-status {
-    padding: 4px 8px !important;
-  }
-
-  .collapsible-content {
-    padding: 4px 8px !important;
-  }
-
-  .slider-container {
-    margin-bottom: 3px !important;
-  }
-
-  .toolbar {
-    gap: 3px !important;
-    margin-top: 3px !important;
-  }
-
-  .toolbar .btn {
-    font-size: 8px !important;
-    padding: 2px 4px !important;
-  }
-
   .canvas-frame {
-    width: 40vmin !important;
-    max-width: 360px !important;
+    width: 32vmin !important;
+    max-width: 300px !important;
   }
 
   .stage {
-    padding: 3px !important;
+    padding: 5px !important;
   }
 
   .log-container.expanded {
@@ -661,21 +620,9 @@ input[type="range"]::-moz-range-thumb {
     max-height: 20vh !important;
   }
 
-  .cp-root {
-    gap: 4px !important;
-  }
-
-  .cp-row {
-    gap: 3px !important;
-  }
-
-  input[type="text"],
-  input[type="search"],
-  input:not([type]),
-  textarea,
-  .room-link {
-    padding: 4px !important;
-    font-size: 9px !important;
+  .log-fab {
+    left: 10px !important;
+    bottom: 10px !important;
   }
 }
 

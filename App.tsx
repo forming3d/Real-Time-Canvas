@@ -1,4 +1,4 @@
-import "react-colorful/dist/index.css"import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DrawingCanvas } from './components/DrawingCanvas';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useHistory } from './hooks/useHistory';

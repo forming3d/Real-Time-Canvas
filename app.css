@@ -111,14 +111,11 @@ body {
 
 /* Logo */
 .page-logo {
-  position: absolute;
-  right: 5px;
-  bottom: 5px;
-  width: 45px;
-  height: 45px;
-  opacity: .3;
-  pointer-events: none;
-  z-index: 10;
+  width: 50px;
+  height: 50px;
+  opacity: .4;
+  margin: 10px 0 0 0;
+  display: block;
 }
 
 /* ===== 3) Enlaces/Controles ===== */
@@ -244,6 +241,32 @@ input[type="file"] {
   min-height: 28px;
   max-height: 42px;
   resize: vertical;
+}
+
+/* Tools Row - Color picker y botones lado a lado */
+.tools-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  margin-top: 6px;
+  align-items: start;
+}
+
+.color-section {
+  min-width: 0;
+}
+
+.buttons-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  align-content: start;
+}
+
+.buttons-section .btn {
+  font-size: 9px;
+  padding: 4px 6px;
+  white-space: nowrap;
 }
 
 .info-text {
@@ -526,30 +549,30 @@ input[type="range"]::-moz-range-thumb {
 /* Paleta */
 .cp-root {
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
 .cp-row {
   display: grid;
-  grid-template-columns: auto 1fr 20px;
+  grid-template-columns: auto 1fr 18px;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
 }
 
 .cp-input {
   width: 100%;
-  padding: 3px 5px;
+  padding: 2px 4px;
   background: #141414;
   color: #eaeaea;
   border: 1px solid var(--clr-border);
-  border-radius: 4px;
+  border-radius: 3px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 10px;
+  font-size: 9px;
 }
 
 .cp-preview {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border: 1px solid var(--clr-border);
   border-radius: 3px;
 }
@@ -637,6 +660,37 @@ input[type="range"]::-moz-range-thumb {
   input[type="number"] {
     padding: 3px 5px !important;
     font-size: 10px !important;
+  }
+
+  .tools-row {
+    grid-template-columns: auto 1fr !important;
+    gap: 6px !important;
+  }
+
+  .buttons-section {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 3px !important;
+  }
+
+  .buttons-section .btn {
+    font-size: 8px !important;
+    padding: 3px 4px !important;
+  }
+
+  .cp-input {
+    font-size: 8px !important;
+    padding: 2px 3px !important;
+  }
+
+  .cp-preview {
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  .page-logo {
+    width: 40px !important;
+    height: 40px !important;
+    margin: 8px 0 0 0 !important;
   }
 
   .canvas-frame {

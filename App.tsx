@@ -235,8 +235,6 @@ export default function App() {
 
   return (
     <main className="app">
-      <img src="/logo.png" alt="Logo" className="page-logo" />
-
       {/* Panel izquierdo */}
       <aside role="complementary" aria-label="Panel de control" className="panel">
         <div className="connection-status">
@@ -277,35 +275,33 @@ export default function App() {
         </div>
 
         <div className="section">
-          <h3>Color</h3>
-          <ColorPickerPro
-            value={brushColor}
-            onChange={(hex) => setBrushColor(hex)}
-            recent={colorHistory}
-            onPickRecent={(hex) => setBrushColor(hex)}
-          />
-          <div className="image-upload" style={{ marginTop: 6 }}>
-            <button className="btn btn-ghost btn-pill btn-xs" onClick={() => setShowPalettePanel(v => !v)}>
-              {showPalettePanel ? <ChevronUpIcon className="toggle-icon" /> : <ChevronDownIcon className="toggle-icon" />} Paleta
-            </button>
-            {showPalettePanel && (
-              <>
-                <input type="file" accept="image/*" onChange={handleImageUpload} aria-label="Subir imagen para extraer paleta" style={{ marginTop: 5 }} />
-                {colorHistory.length > 0 && (
-                  <div className="palette" style={{ marginTop: 6 }}>
-                    {colorHistory.map((c, i) => (
-                      <button key={c + i} className="swatch" style={{ backgroundColor: c }}
-                        onClick={() => setBrushColor(c)} aria-label={`Seleccionar color ${c}`} title={c} />
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
+          <h3>Herramientas</h3>
+          
+          {/* Selector de color y botones en una fila */}
+          <div className="tools-row">
+            <div className="color-section">
+              <ColorPickerPro
+                value={brushColor}
+                onChange={(hex) => setBrushColor(hex)}
+                recent={[]}
+                onPickRecent={(hex) => setBrushColor(hex)}
+              />
+            </div>
+            
+            <div className="buttons-section">
+              <button className={`btn btn-ghost btn-sm ${!eraser ? 'active' : ''}`} onClick={() => setEraser(false)} aria-label="Pincel" title="Pincel">
+                <BrushIcon className="tool-icon" /> Pincel
+              </button>
+              <button className={`btn btn-ghost btn-sm ${eraser ? 'active' : ''}`} onClick={() => setEraser(true)} aria-label="Borrador" title="Borrador">
+                <ClearIcon className="tool-icon" /> Borrador
+              </button>
+              <button className="btn btn-muted btn-sm" onClick={undo} disabled={!canUndo} title="Deshacer"><UndoIcon className="tool-icon" /></button>
+              <button className="btn btn-muted btn-sm" onClick={redo} disabled={!canRedo} title="Rehacer"><RedoIcon className="tool-icon" /></button>
+              <button className="btn btn-danger btn-sm" onClick={clearCanvas} aria-label="Borrar lienzo">Limpiar</button>
+            </div>
           </div>
-        </div>
 
-        <div className="section">
-          <h3>Pincel</h3>
+          {/* Sliders de grosor y opacidad */}
           <div className="slider-container">
             <label>
               <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px' }}>
@@ -323,17 +319,6 @@ export default function App() {
               </span>
               <input type="range" min={1} max={100} value={brushOpacity} onChange={(e) => setBrushOpacity(Number(e.target.value))} aria-label="Opacidad del pincel" />
             </label>
-          </div>
-          <div className="toolbar">
-            <button className={`btn btn-ghost btn-sm ${!eraser ? 'active' : ''}`} onClick={() => setEraser(false)} aria-label="Pincel" title="Pincel">
-              <BrushIcon className="tool-icon" /> Pincel
-            </button>
-            <button className={`btn btn-ghost btn-sm ${eraser ? 'active' : ''}`} onClick={() => setEraser(true)} aria-label="Borrador" title="Borrador">
-              <ClearIcon className="tool-icon" /> Borrador
-            </button>
-            <button className="btn btn-muted btn-sm" onClick={undo} disabled={!canUndo} title="Deshacer"><UndoIcon className="tool-icon" /></button>
-            <button className="btn btn-muted btn-sm" onClick={redo} disabled={!canRedo} title="Rehacer"><RedoIcon className="tool-icon" /></button>
-            <button className="btn btn-danger btn-sm" onClick={clearCanvas} aria-label="Borrar lienzo" style={{ gridColumn: '1 / -1' }}>Limpiar Canvas</button>
           </div>
         </div>
       </aside>
@@ -364,6 +349,9 @@ export default function App() {
             connected={connected}
           />
         </div>
+
+        {/* Logo debajo del canvas */}
+        <img src="/logo.png" alt="Logo" className="page-logo" />
 
         {/* LOG */}
         <div className={`log-container ${showLogPanel ? 'expanded' : ''}`} role="region" aria-label="Consola de eventos">

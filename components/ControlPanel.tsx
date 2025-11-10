@@ -1,5 +1,5 @@
+// ControlPanel.tsx
 import React from 'react';
-import ColorPickerPro from './components/ColorPickerPro';
 
 type Props = {
   connected: boolean;
@@ -15,14 +15,12 @@ type Props = {
   prompt: string;
   setPrompt: (s: string) => void;
   sendPrompt: () => void;
-  recent?: string[];
-  onPickRecent?: (hex: string) => void;
 };
 
 export const ControlPanel: React.FC<Props> = ({
   connected, room, setRoom, brushColor, setBrushColor,
   brushSize, setBrushSize, eraser, setEraser,
-  clearCanvas, prompt, setPrompt, sendPrompt, recent = [], onPickRecent
+  clearCanvas, prompt, setPrompt, sendPrompt
 }) => {
   return (
     <aside role="complementary" aria-label="Panel de control" className="panel">
@@ -31,29 +29,26 @@ export const ControlPanel: React.FC<Props> = ({
           Sala
           <input value={room} onChange={(e) => setRoom(e.target.value)} aria-label="Nombre de la sala" />
         </label>
-        <span>Conexión: {connected ? 'activa' : 'inactiva'}</span>
+        <span aria-live="polite" aria-label={connected ? 'Conectado' : 'Desconectado'}>
+          {connected ? '🟢' : '🔴'}
+        </span>
       </div>
 
-      <div className="col">
-        <h3>Color</h3>
-        <ColorPickerPro
-          value={brushColor}
-          onChange={setBrushColor}
-          recent={recent}
-          onPickRecent={onPickRecent}
-        />
-      </div>
-
-      <div className="col">
-        <h3>Pincel</h3>
-        <label>Grosor
-          <input type="range" min={1} max={80} value={brushSize}
-            onChange={(e) => setBrushSize(Number(e.target.value))} />
+      <div className="row">
+        <label>
+          Color
+          <input type="color" value={brushColor} onChange={(e) => setBrushColor(e.target.value)} aria-label="Color de brocha" />
         </label>
-        <div className="row" style={{ gridTemplateColumns: '1fr 1fr' }}>
-          <button className={`tool-button ${!eraser ? 'active' : ''}`} onClick={() => setEraser(false)}>Pincel</button>
-          <button className={`tool-button ${eraser ? 'active' : ''}`} onClick={() => setEraser(true)}>Borrador</button>
-        </div>
+        <label>
+          Grosor
+          <input type="range" min={1} max={64} value={brushSize}
+            onChange={(e) => setBrushSize(Number(e.target.value))}
+            aria-label="Grosor de brocha"
+            aria-valuemin={1} aria-valuemax={64} aria-valuenow={brushSize} />
+        </label>
+        <button type="button" className="btn" onClick={() => setEraser(!eraser)} aria-pressed={eraser} aria-label="Alternar goma">
+          {eraser ? 'Goma ON' : 'Goma OFF'}
+        </button>
         <button type="button" className="btn" onClick={clearCanvas} aria-label="Borrar lienzo">Borrar</button>
       </div>
 

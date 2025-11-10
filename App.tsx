@@ -1,13 +1,12 @@
-// App.tsx
+// src/App.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-
-import { DrawingCanvas } from "./components/DrawingCanvas"; 
+import { DrawingCanvas } from './components/DrawingCanvas';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useHistory } from './hooks/useHistory';
 import {
   ChevronDownIcon, ChevronUpIcon, UndoIcon, RedoIcon,
   BrushIcon, ClearIcon
-} from './icons';
+} from './components/icons';
 import ColorPickerPro from './components/ColorPickerPro';
 
 type CanvasHistoryState = { dataUrl: string };
@@ -47,11 +46,11 @@ export default function App() {
   const stageRef = useRef<HTMLElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Historial (para Undo/Redo por imagen)
+  // Historial para Undo/Redo por imagen
   const { state: canvasHistoryState, setState: setCanvasHistoryState, undo, redo, canUndo, canRedo } =
     useHistory<CanvasHistoryState | null>(null);
 
-  // WS
+  // ---- WebSocket ----
   const addLog = useCallback((message: string, type: LogEntry['type'] = 'info') => {
     setLogs(prev => [...prev, { id: nextLogId, message, type, timestamp: Date.now() }]);
     setNextLogId(n => n + 1);
@@ -79,23 +78,22 @@ export default function App() {
   const { connected, sendJSON } = useWebSocket({
     url,
     onMessage: handleSocketMessage,
-    reconnectMs: 2000,
+    reconnectMs: 2000
   });
 
-  // Auto-scroll del log
+  // ---- UI helpers ----
   useEffect(() => {
     if (logScrollRef.current)
       logScrollRef.current.scrollTop = logScrollRef.current.scrollHeight;
   }, [logs]);
 
-  // Tecla L → alterna log
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key.toLowerCase() === 'l') setShowLogPanel(v => !v); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Sizing del canvas según espacio
+  // Canvas size adaptado al contenedor (tablet landscape friendly)
   useEffect(() => {
     const stageEl = stageRef.current;
     if (!stageEl) return;
@@ -117,7 +115,7 @@ export default function App() {
     return () => { ro?.disconnect(); window.removeEventListener('resize', computeSize); };
   }, []);
 
-  // FIX “zoom” acumulado al restaurar snapshots
+  // FIX “zoom acumulado” al restaurar snapshots (coordenadas lógicas)
   useEffect(() => {
     if (!canvasHistoryState?.dataUrl || !canvasRef.current) return;
     const c = canvasRef.current;
@@ -125,19 +123,18 @@ export default function App() {
     if (!ctx) return;
 
     const dpr = window.devicePixelRatio || 1;
-    const W = c.width / dpr;   // tamaño lógico (CSS px)
+    const W = c.width / dpr;   // medidas lógicas
     const H = c.height / dpr;
 
     const img = new Image();
     img.onload = () => {
-      // ctx ya está escalado a DPR desde DrawingCanvas → dibuja en coords lógicas
       ctx.clearRect(0, 0, W, H);
       ctx.drawImage(img, 0, 0, W, H);
     };
     img.src = canvasHistoryState.dataUrl;
   }, [canvasHistoryState]);
 
-  // Envío frame en vivo (JPEG reducido)
+  // ---- Envíos ----
   const sendLiveFrame = useCallback((canvas: HTMLCanvasElement, options: { liveMax: number; liveJpegQ: number }) => {
     if (!connected) return;
     const { liveMax, liveJpegQ } = options;
@@ -161,7 +158,6 @@ export default function App() {
     sendJSON({ type: 'draw', payload: { dataUrl } });
   }, [connected, sendJSON]);
 
-  // PNG final al soltar
   const handleFinalBlob = useCallback(async (blob: Blob) => {
     if (!connected) return;
     const arrayBuffer = await blob.arrayBuffer();
@@ -170,7 +166,6 @@ export default function App() {
     addLog('Imagen final enviada', 'success');
   }, [connected, sendJSON, addLog]);
 
-  // Estados WS / Prompt
   const sendState = useCallback((state: string) => {
     if (!connected) return;
     sendJSON({ type: 'state', payload: { state } });
@@ -230,13 +225,23 @@ export default function App() {
     }
   }, [room, roomInput, addLog]);
 
+  // Borrar lienzo
+  const clearCanvas = useCallback(() => {
+    const c = canvasRef.current; if (!c) return;
+    const ctx = c.getContext('2d'); if (!ctx) return;
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.restore();
+    addLog('Canvas borrado', 'info');
+  }, [addLog]);
+
   return (
     <main className="app">
       <img src="/logo.png" alt="Logo" className="page-logo" />
 
-      {/* Panel */}
+      {/* Panel lateral */}
       <aside role="complementary" aria-label="Panel de control" className="panel">
-        {/* Cabecera + Ver sala */}
+        {/* Estado + Ver sala */}
         <div className="connection-status">
           <div className="status-indicator">
             <div className={`status-dot ${connected ? 'connected' : 'disconnected'}`} />
@@ -400,7 +405,7 @@ export default function App() {
         </div>
       </aside>
 
-      {/* Stage */}
+      {/* Stage (área de dibujo) */}
       <section className="stage" ref={stageRef as any}>
         <div className="canvas-frame">
           <DrawingCanvas

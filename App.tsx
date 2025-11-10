@@ -308,18 +308,18 @@ export default function App() {
           <h3>Pincel</h3>
           <div className="slider-container">
             <label>
-              <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
                 <span>Grosor</span>
-                <span style={{ fontSize: '11px', color: '#7c3aed', fontWeight: 600 }}>{brushSize}px</span>
+                <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600 }}>{brushSize}px</span>
               </span>
               <input type="range" min={1} max={80} value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} aria-label="Grosor del pincel" />
             </label>
           </div>
           <div className="slider-container">
             <label>
-              <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
                 <span>Opacidad</span>
-                <span style={{ fontSize: '11px', color: '#7c3aed', fontWeight: 600 }}>{brushOpacity}%</span>
+                <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600 }}>{brushOpacity}%</span>
               </span>
               <input type="range" min={1} max={100} value={brushOpacity} onChange={(e) => setBrushOpacity(Number(e.target.value))} aria-label="Opacidad del pincel" />
             </label>

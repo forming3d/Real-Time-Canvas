@@ -1,4 +1,3 @@
-// src/App.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DrawingCanvas } from './components/DrawingCanvas';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -13,10 +12,12 @@ type CanvasHistoryState = { dataUrl: string };
 type LogEntry = { id: number; message: string; type: 'info' | 'error' | 'success'; timestamp: number };
 
 const randomRoomId = () => Math.random().toString(36).slice(2, 8).toUpperCase();
+
+// ⬅️ tu server escucha en /ws
 const WS_URL = (room: string) =>
   (location.protocol === 'https:' ? 'wss://' : 'ws://') +
   (location.host || 'localhost:8080') +
-  `?room=${encodeURIComponent(room)}`;
+  `/ws?room=${encodeURIComponent(room)}`;
 
 export default function App() {
   const initialRoom = useMemo(() => randomRoomId(), []);
@@ -50,38 +51,36 @@ export default function App() {
   const { state: canvasHistoryState, setState: setCanvasHistoryState, undo, redo, canUndo, canRedo } =
     useHistory<CanvasHistoryState | null>(null);
 
-  // ---- WebSocket ----
   const addLog = useCallback((message: string, type: LogEntry['type'] = 'info') => {
     setLogs(prev => [...prev, { id: nextLogId, message, type, timestamp: Date.now() }]);
     setNextLogId(n => n + 1);
   }, [nextLogId]);
 
   const handleSocketMessage = useCallback((event: MessageEvent) => {
-    if (typeof event.data !== 'string') return;
-    try {
-      const msg = JSON.parse(event.data);
-      if (msg?.type === 'hello' && msg?.payload?.room) {
-        const serverRoom = String(msg.payload.room).toUpperCase();
-        setRoom(serverRoom);
-        setRoomInput(serverRoom);
-        addLog(`Conectado a sala: ${serverRoom}`, 'success');
-      } else if (msg?.type === 'state') {
-        addLog(`Estado recibido: ${msg?.payload?.state || 'N/A'}`, 'info');
-      } else if (msg?.type === 'proc') {
-        addLog(`Proc recibido: ${msg?.payload?.text || 'N/A'}`, 'info');
-      }
-    } catch {
-      addLog('Mensaje no JSON recibido', 'error');
+    // json o binario (Touch manda PNG como binario -> no nos afecta aquí)
+    if (typeof event.data === 'string') {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg?.type === 'hello' && msg?.payload?.room) {
+          const serverRoom = String(msg.payload.room).toUpperCase();
+          setRoom(serverRoom);
+          setRoomInput(serverRoom);
+          addLog(`Conectado a sala: ${serverRoom}`, 'success');
+        } else if (msg?.type === 'state') {
+          addLog(`Estado recibido: ${String(msg?.payload)}`, 'info');
+        } else if (msg?.type === 'proc') {
+          addLog(`Proc recibido: ${String(msg?.payload)}`, 'info');
+        }
+      } catch { /* ignorar no-JSON */ }
     }
   }, [addLog]);
 
-  const { connected, sendJSON } = useWebSocket({
+  const { connected, sendJSON, sendBinary } = useWebSocket({
     url,
     onMessage: handleSocketMessage,
     reconnectMs: 2000
   });
 
-  // ---- UI helpers ----
   useEffect(() => {
     if (logScrollRef.current)
       logScrollRef.current.scrollTop = logScrollRef.current.scrollHeight;
@@ -93,114 +92,99 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Canvas size adaptado al contenedor (tablet landscape friendly)
+  // Tamaño canvas (tablet horizontal)
   useEffect(() => {
     const stageEl = stageRef.current;
     if (!stageEl) return;
-    const paddingCompensation = 40;
     const computeSize = () => {
-      const bounds = stageEl.getBoundingClientRect();
-      const available = Math.max(0, bounds.width - paddingCompensation);
+      const b = stageEl.getBoundingClientRect();
+      const available = Math.max(0, b.width - 40);
       const next = Math.round(Math.min(512, Math.max(256, available || 512)));
       setCanvasSize(prev => (Math.abs(prev - next) > 1 ? next : prev));
     };
     computeSize();
     let ro: ResizeObserver | null = null;
-    if ('ResizeObserver' in window) {
-      ro = new ResizeObserver(computeSize);
-      ro.observe(stageEl);
-    } else {
-      window.addEventListener('resize', computeSize);
-    }
+    if ('ResizeObserver' in window) { ro = new ResizeObserver(computeSize); ro.observe(stageEl); }
+    else { window.addEventListener('resize', computeSize); }
     return () => { ro?.disconnect(); window.removeEventListener('resize', computeSize); };
   }, []);
 
-  // FIX “zoom acumulado” al restaurar snapshots (coordenadas lógicas)
+  // Restaurar snapshot sin re-escalar (coordenadas lógicas)
   useEffect(() => {
     if (!canvasHistoryState?.dataUrl || !canvasRef.current) return;
     const c = canvasRef.current;
-    const ctx = c.getContext('2d');
-    if (!ctx) return;
+    const ctx = c.getContext('2d'); if (!ctx) return;
 
     const dpr = window.devicePixelRatio || 1;
-    const W = c.width / dpr;   // medidas lógicas
-    const H = c.height / dpr;
+    const W = c.width / dpr, H = c.height / dpr;
 
     const img = new Image();
-    img.onload = () => {
-      ctx.clearRect(0, 0, W, H);
-      ctx.drawImage(img, 0, 0, W, H);
-    };
+    img.onload = () => { ctx.clearRect(0, 0, W, H); ctx.drawImage(img, 0, 0, W, H); };
     img.src = canvasHistoryState.dataUrl;
   }, [canvasHistoryState]);
 
-  // ---- Envíos ----
-  const sendLiveFrame = useCallback((canvas: HTMLCanvasElement, options: { liveMax: number; liveJpegQ: number }) => {
+  // --- PROTOCOLO CORRECTO PARA TOUCH --- //
+  // draw       -> payload: string "data:image/jpeg;base64,..."
+  // state      -> payload: string "drawing:start" | "drawing:end"
+  // proc/prompt-> payload: string "texto"
+  // final PNG  -> binario (onReceiveBinary)
+  const sendLiveFrame = useCallback((canvas: HTMLCanvasElement, opts: { liveMax: number; liveJpegQ: number }) => {
     if (!connected) return;
-    const { liveMax, liveJpegQ } = options;
+    const { liveMax, liveJpegQ } = opts;
     const dpr = window.devicePixelRatio || 1;
-    const logicalWidth = canvas.width / dpr;
-    const logicalHeight = canvas.height / dpr;
-    const scale = Math.min(1, liveMax / Math.max(logicalWidth, logicalHeight));
-    let dataUrl: string;
+    const W = canvas.width / dpr, H = canvas.height / dpr;
+    const scale = Math.min(1, liveMax / Math.max(W, H));
 
+    let dataUrl: string;
     if (scale < 1) {
-      const w = Math.round(logicalWidth * scale);
-      const h = Math.round(logicalHeight * scale);
-      const tmp = document.createElement('canvas');
-      tmp.width = w; tmp.height = h;
+      const w = Math.round(W * scale), h = Math.round(H * scale);
+      const tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h;
       const tctx = tmp.getContext('2d'); if (!tctx) return;
       tctx.drawImage(canvas, 0, 0, w, h);
       dataUrl = tmp.toDataURL('image/jpeg', liveJpegQ);
     } else {
       dataUrl = canvas.toDataURL('image/jpeg', liveJpegQ);
     }
-    sendJSON({ type: 'draw', payload: { dataUrl } });
+
+    // ⬅️ payload como STRING (no objeto)
+    sendJSON({ type: 'draw', payload: dataUrl });
   }, [connected, sendJSON]);
 
   const handleFinalBlob = useCallback(async (blob: Blob) => {
     if (!connected) return;
-    const arrayBuffer = await blob.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-    sendJSON({ type: 'draw-final', payload: { dataUrl: `data:image/png;base64,${base64}` } });
-    addLog('Imagen final enviada', 'success');
-  }, [connected, sendJSON, addLog]);
+    // ⬅️ PNG final como BINARIO (Touch -> onReceiveBinary)
+    sendBinary(blob);
+    addLog('PNG final enviado (binario)', 'success');
+  }, [connected, sendBinary, addLog]);
 
-  const sendState = useCallback((state: string) => {
+  const sendState = useCallback((state: 'drawing:start' | 'drawing:end') => {
     if (!connected) return;
-    sendJSON({ type: 'state', payload: { state } });
+    // ⬅️ payload como STRING
+    sendJSON({ type: 'state', payload: state });
   }, [connected, sendJSON]);
 
   const sendPrompt = useCallback(() => {
     if (!connected) return;
     const text = prompt.trim(); if (!text) return;
-    sendJSON({ type: 'proc', payload: { text } });
+    // ⬅️ payload como STRING
+    sendJSON({ type: 'proc', payload: text });
     addLog(`Prompt enviado: ${text}`, 'success');
   }, [connected, prompt, sendJSON, addLog]);
 
-  // Paleta por imagen
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const size = 100;
-        canvas.width = size; canvas.height = size;
-        const ctx = canvas.getContext('2d'); if (!ctx) return;
-        ctx.drawImage(img, 0, 0, size, size);
-        const imageData = ctx.getImageData(0, 0, size, size).data;
-        const pts = [
-          { x: size * 0.2, y: size * 0.2 },
-          { x: size * 0.8, y: size * 0.2 },
-          { x: size * 0.5, y: size * 0.5 },
-          { x: size * 0.2, y: size * 0.8 },
-          { x: size * 0.8, y: size * 0.8 },
-        ];
+        const c = document.createElement('canvas'); c.width = 100; c.height = 100;
+        const ctx = c.getContext('2d'); if (!ctx) return;
+        ctx.drawImage(img, 0, 0, 100, 100);
+        const data = ctx.getImageData(0, 0, 100, 100).data;
+        const pts = [{ x: 20, y: 20 }, { x: 80, y: 20 }, { x: 50, y: 50 }, { x: 20, y: 80 }, { x: 80, y: 80 }];
         const colors = pts.map(p => {
-          const i = (Math.floor(p.y) * size + Math.floor(p.x)) * 4;
-          const r = imageData[i], g = imageData[i + 1], b = imageData[i + 2];
+          const i = (Math.floor(p.y) * 100 + Math.floor(p.x)) * 4;
+          const r = data[i], g = data[i + 1], b = data[i + 2];
           return `#${[r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')}`;
         });
         setColorHistory(prev => Array.from(new Set([...colors, ...prev])).slice(0, 24));
@@ -211,21 +195,16 @@ export default function App() {
     reader.readAsDataURL(file);
   }, [addLog]);
 
-  // Copiar WSS
   const handleCopyLink = useCallback(async () => {
     const link = WS_URL(roomInput || room);
-    try {
-      await navigator.clipboard.writeText(link);
-      addLog('Link WSS copiado', 'success');
-    } catch {
-      const ta = document.createElement('textarea');
-      ta.value = link; document.body.appendChild(ta);
-      ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    try { await navigator.clipboard.writeText(link); addLog('Link WSS copiado', 'success'); }
+    catch {
+      const ta = document.createElement('textarea'); ta.value = link;
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
       addLog('Link WSS copiado (fallback)', 'success');
     }
   }, [room, roomInput, addLog]);
 
-  // Borrar lienzo
   const clearCanvas = useCallback(() => {
     const c = canvasRef.current; if (!c) return;
     const ctx = c.getContext('2d'); if (!ctx) return;
@@ -239,21 +218,14 @@ export default function App() {
     <main className="app">
       <img src="/logo.png" alt="Logo" className="page-logo" />
 
-      {/* Panel lateral */}
       <aside role="complementary" aria-label="Panel de control" className="panel">
-        {/* Estado + Ver sala */}
         <div className="connection-status">
           <div className="status-indicator">
             <div className={`status-dot ${connected ? 'connected' : 'disconnected'}`} />
             <span>{connected ? 'Conectado' : 'Desconectado'}</span>
           </div>
-          <button
-            onClick={() => setShowRoomPanel(v => !v)}
-            className="btn btn-ghost btn-sm"
-            aria-label="Ver sala"
-          >
-            {showRoomPanel ? <ChevronUpIcon className="toggle-icon" /> : <ChevronDownIcon className="toggle-icon" />}
-            Ver sala
+          <button onClick={() => setShowRoomPanel(v => !v)} className="btn btn-ghost btn-sm" aria-label="Ver sala">
+            {showRoomPanel ? <ChevronUpIcon className="toggle-icon" /> : <ChevronDownIcon className="toggle-icon" />} Ver sala
           </button>
         </div>
 
@@ -261,20 +233,13 @@ export default function App() {
           <div className="collapsible">
             <div className="collapsible-content">
               <p className="info-text">
-                Comparte este <strong>link WSS</strong> con el receptor (TouchDesigner, Node, Python…).
-                <br />
+                Comparte este <strong>link WSS</strong> con el receptor (TouchDesigner, Node, Python…).<br />
                 <small>El receptor debe conectarse por WebSocket a esta URL para unirse a tu sala.</small>
               </p>
-
               <label className="label-inline">
                 Sala
-                <input
-                  value={roomInput}
-                  onChange={(e) => setRoomInput(e.target.value.toUpperCase())}
-                  aria-label="Nombre de la sala"
-                />
+                <input value={roomInput} onChange={(e) => setRoomInput(e.target.value.toUpperCase())} aria-label="Nombre de la sala" />
               </label>
-
               <div className="room-actions">
                 <input className="room-link" readOnly value={WS_URL(roomInput || room)} aria-label="Link WSS" />
                 <button className="btn btn-primary btn-sm" onClick={handleCopyLink}>Copiar link</button>
@@ -283,21 +248,14 @@ export default function App() {
           </div>
         )}
 
-        {/* Prompt */}
         <div className="section">
           <label>
             Prompt
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              aria-label="Texto de prompt"
-              placeholder="Escribe tu mensaje/proc..."
-            />
+            <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} aria-label="Texto de prompt" placeholder="Escribe tu mensaje/proc..." />
           </label>
           <button type="button" className="btn btn-primary btn-sm" onClick={sendPrompt}>Enviar</button>
         </div>
 
-        {/* Color */}
         <div className="section">
           <h3>Color</h3>
           <ColorPickerPro
@@ -306,33 +264,18 @@ export default function App() {
             recent={colorHistory}
             onPickRecent={(hex) => setBrushColor(hex)}
           />
-
           <div className="image-upload" style={{ marginTop: 12 }}>
             <button className="btn btn-ghost btn-pill btn-xs" onClick={() => setShowPalettePanel(v => !v)}>
-              {showPalettePanel ? <ChevronUpIcon className="toggle-icon" /> : <ChevronDownIcon className="toggle-icon" />}
-              Opciones de paleta
+              {showPalettePanel ? <ChevronUpIcon className="toggle-icon" /> : <ChevronDownIcon className="toggle-icon" />} Opciones de paleta
             </button>
-
             {showPalettePanel && (
               <>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  aria-label="Subir imagen para extraer paleta"
-                  style={{ marginTop: 8 }}
-                />
+                <input type="file" accept="image/*" onChange={handleImageUpload} aria-label="Subir imagen para extraer paleta" style={{ marginTop: 8 }} />
                 {colorHistory.length > 0 && (
                   <div className="palette" style={{ marginTop: 10 }}>
                     {colorHistory.map((c, i) => (
-                      <button
-                        key={c + i}
-                        className="swatch"
-                        style={{ backgroundColor: c }}
-                        onClick={() => setBrushColor(c)}
-                        aria-label={`Seleccionar color ${c}`}
-                        title={c}
-                      />
+                      <button key={c + i} className="swatch" style={{ backgroundColor: c }}
+                        onClick={() => setBrushColor(c)} aria-label={`Seleccionar color ${c}`} title={c} />
                     ))}
                   </div>
                 )}
@@ -341,71 +284,32 @@ export default function App() {
           </div>
         </div>
 
-        {/* Pincel (compacto) */}
         <div className="section">
           <h3>Pincel</h3>
-
           <div className="slider-container">
-            <label>
-              Grosor
-              <input
-                type="range"
-                min={1}
-                max={80}
-                value={brushSize}
-                onChange={(e) => setBrushSize(Number(e.target.value))}
-                aria-label="Grosor del pincel"
-              />
+            <label>Grosor
+              <input type="range" min={1} max={80} value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} aria-label="Grosor del pincel" />
             </label>
           </div>
-
           <div className="slider-container">
-            <label>
-              Opacidad
-              <input
-                type="range"
-                min={1}
-                max={100}
-                value={brushOpacity}
-                onChange={(e) => setBrushOpacity(Number(e.target.value))}
-                aria-label="Opacidad del pincel"
-              />
+            <label>Opacidad
+              <input type="range" min={1} max={100} value={brushOpacity} onChange={(e) => setBrushOpacity(Number(e.target.value))} aria-label="Opacidad del pincel" />
             </label>
           </div>
-
           <div className="toolbar">
-            <button
-              className={`btn btn-ghost btn-sm ${!eraser ? 'active' : ''}`}
-              onClick={() => setEraser(false)}
-              aria-pressed={!eraser}
-              aria-label="Pincel"
-              title="Pincel"
-            >
+            <button className={`btn btn-ghost btn-sm ${!eraser ? 'active' : ''}`} onClick={() => setEraser(false)} aria-label="Pincel" title="Pincel">
               <BrushIcon className="tool-icon" /> Pincel
             </button>
-            <button
-              className={`btn btn-ghost btn-sm ${eraser ? 'active' : ''}`}
-              onClick={() => setEraser(true)}
-              aria-pressed={eraser}
-              aria-label="Borrador"
-              title="Borrador"
-            >
+            <button className={`btn btn-ghost btn-sm ${eraser ? 'active' : ''}`} onClick={() => setEraser(true)} aria-label="Borrador" title="Borrador">
               <ClearIcon className="tool-icon" /> Borrador
             </button>
-            <button className="btn btn-muted btn-sm" onClick={undo} disabled={!canUndo} title="Deshacer">
-              <UndoIcon className="tool-icon" /> Undo
-            </button>
-            <button className="btn btn-muted btn-sm" onClick={redo} disabled={!canRedo} title="Rehacer">
-              <RedoIcon className="tool-icon" /> Redo
-            </button>
-            <button className="btn btn-danger btn-sm" onClick={clearCanvas} aria-label="Borrar lienzo">
-              Borrar
-            </button>
+            <button className="btn btn-muted btn-sm" onClick={undo} disabled={!canUndo} title="Deshacer"><UndoIcon className="tool-icon" /> Undo</button>
+            <button className="btn btn-muted btn-sm" onClick={redo} disabled={!canRedo} title="Rehacer"><RedoIcon className="tool-icon" /> Redo</button>
+            <button className="btn btn-danger btn-sm" onClick={clearCanvas} aria-label="Borrar lienzo">Borrar</button>
           </div>
         </div>
       </aside>
 
-      {/* Stage (área de dibujo) */}
       <section className="stage" ref={stageRef as any}>
         <div className="canvas-frame">
           <DrawingCanvas
@@ -417,7 +321,7 @@ export default function App() {
             brushSize={brushSize}
             eraser={eraser}
             onLiveFrame={(c) => sendLiveFrame(c, { liveMax: 256, liveJpegQ: 0.5 })}
-            onFinalBlob={handleFinalBlob}
+            onFinalBlob={(b) => { handleFinalBlob(b); }}
             onDrawStart={() => sendState('drawing:start')}
             onDrawEnd={() => {
               const c = canvasRef.current;
@@ -428,7 +332,6 @@ export default function App() {
           />
         </div>
 
-        {/* LOG */}
         <div className={`log-container ${showLogPanel ? 'expanded' : ''}`} role="region" aria-label="Consola de eventos">
           <div className="log-header">
             <strong>Logs</strong>
@@ -445,13 +348,8 @@ export default function App() {
         </div>
       </section>
 
-      {/* FAB del log */}
-      <button
-        className="log-fab"
-        aria-label={showLogPanel ? 'Ocultar log' : 'Mostrar log'}
-        onClick={() => setShowLogPanel(v => !v)}
-        title={showLogPanel ? 'Ocultar log (L)' : 'Mostrar log (L)'}
-      >
+      <button className="log-fab" aria-label={showLogPanel ? 'Ocultar log' : 'Mostrar log'}
+        onClick={() => setShowLogPanel(v => !v)} title={showLogPanel ? 'Ocultar log (L)' : 'Mostrar log (L)'}>
         {showLogPanel ? '✕' : 'LOG'}
       </button>
     </main>

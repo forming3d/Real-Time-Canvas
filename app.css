@@ -176,6 +176,7 @@ body {
   height: 100%;
   margin: 0 auto;
   padding: 8px;
+  box-sizing: border-box;
 }
 
 /* Canvas visible, centrado y responsivo */
@@ -901,18 +902,23 @@ input[type="range"]::-moz-range-thumb {
 
   .stage {
     height: 65vh !important;
-    padding: 0 5px 65px !important;
-    align-items: stretch !important;
-    display: flex !important;
-    flex-direction: column !important;
+    padding: 0 5px 60px !important;
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
   }
 
   .canvas-frame {
-    padding: 0 8px 0 !important;
-    place-items: center center !important;
-    flex: 1 !important;
-    display: flex !important;
-    align-items: center !important;
+    padding: 0 8px !important;
+    place-items: start center !important;
+    margin-top: 0 !important;
+  }
+  
+  .canvas {
+    aspect-ratio: 1 / 1 !important;
+    width: auto !important;
+    height: auto !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
   }
 
   .section {

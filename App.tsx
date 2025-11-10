@@ -1,23 +1,22 @@
 // App.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { DrawingCanvas } from './components/DrawingCanvas';
+import { DrawingCanvas } from './DrawingCanvas';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useHistory } from './hooks/useHistory';
 import {
   ChevronDownIcon, ChevronUpIcon, UndoIcon, RedoIcon,
   BrushIcon, ClearIcon
-} from './components/icons';
+} from './icons';
 import ColorPickerPro from './components/ColorPickerPro';
 
-const randomRoomId = () => Math.random().toString(36).slice(2, 8).toUpperCase();
+type CanvasHistoryState = { dataUrl: string };
+type LogEntry = { id: number; message: string; type: 'info' | 'error' | 'success'; timestamp: number };
 
+const randomRoomId = () => Math.random().toString(36).slice(2, 8).toUpperCase();
 const WS_URL = (room: string) =>
   (location.protocol === 'https:' ? 'wss://' : 'ws://') +
   (location.host || 'localhost:8080') +
   `?room=${encodeURIComponent(room)}`;
-
-type CanvasHistoryState = { dataUrl: string };
-type LogEntry = { id: number; message: string; type: 'info' | 'error' | 'success'; timestamp: number; };
 
 export default function App() {
   const initialRoom = useMemo(() => randomRoomId(), []);
@@ -48,10 +47,10 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Historial (para Undo/Redo por imagen)
-  const { state: histState, setState: setHist, undo, redo, canUndo, canRedo } =
+  const { state: canvasHistoryState, setState: setCanvasHistoryState, undo, redo, canUndo, canRedo } =
     useHistory<CanvasHistoryState | null>(null);
 
-  // WebSocket
+  // WS
   const addLog = useCallback((message: string, type: LogEntry['type'] = 'info') => {
     setLogs(prev => [...prev, { id: nextLogId, message, type, timestamp: Date.now() }]);
     setNextLogId(n => n + 1);
@@ -79,22 +78,23 @@ export default function App() {
   const { connected, sendJSON } = useWebSocket({
     url,
     onMessage: handleSocketMessage,
-    reconnectMs: 2000
+    reconnectMs: 2000,
   });
 
-  // Scroll auto del log
+  // Auto-scroll del log
   useEffect(() => {
-    if (logScrollRef.current) logScrollRef.current.scrollTop = logScrollRef.current.scrollHeight;
+    if (logScrollRef.current)
+      logScrollRef.current.scrollTop = logScrollRef.current.scrollHeight;
   }, [logs]);
 
-  // Tecla L → abre/cierra log
+  // Tecla L → alterna log
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key.toLowerCase() === 'l') setShowLogPanel(v => !v); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Ajuste responsivo del canvas
+  // Sizing del canvas según espacio
   useEffect(() => {
     const stageEl = stageRef.current;
     if (!stageEl) return;
@@ -116,21 +116,27 @@ export default function App() {
     return () => { ro?.disconnect(); window.removeEventListener('resize', computeSize); };
   }, []);
 
-  // Pintar snapshot del historial cuando se hace Undo/Redo
+  // FIX “zoom” acumulado al restaurar snapshots
   useEffect(() => {
-    if (!histState?.dataUrl || !canvasRef.current) return;
+    if (!canvasHistoryState?.dataUrl || !canvasRef.current) return;
+    const c = canvasRef.current;
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const W = c.width / dpr;   // tamaño lógico (CSS px)
+    const H = c.height / dpr;
+
     const img = new Image();
     img.onload = () => {
-      const c = canvasRef.current!;
-      const ctx = c.getContext('2d');
-      if (!ctx) return;
-      ctx.clearRect(0, 0, c.width, c.height);
-      ctx.drawImage(img, 0, 0, c.width, c.height);
+      // ctx ya está escalado a DPR desde DrawingCanvas → dibuja en coords lógicas
+      ctx.clearRect(0, 0, W, H);
+      ctx.drawImage(img, 0, 0, W, H);
     };
-    img.src = histState.dataUrl;
-  }, [histState]);
+    img.src = canvasHistoryState.dataUrl;
+  }, [canvasHistoryState]);
 
-  // Enviar frame live (JPEG reducido)
+  // Envío frame en vivo (JPEG reducido)
   const sendLiveFrame = useCallback((canvas: HTMLCanvasElement, options: { liveMax: number; liveJpegQ: number }) => {
     if (!connected) return;
     const { liveMax, liveJpegQ } = options;
@@ -139,6 +145,7 @@ export default function App() {
     const logicalHeight = canvas.height / dpr;
     const scale = Math.min(1, liveMax / Math.max(logicalWidth, logicalHeight));
     let dataUrl: string;
+
     if (scale < 1) {
       const w = Math.round(logicalWidth * scale);
       const h = Math.round(logicalHeight * scale);
@@ -153,7 +160,7 @@ export default function App() {
     sendJSON({ type: 'draw', payload: { dataUrl } });
   }, [connected, sendJSON]);
 
-  // Enviar PNG final
+  // PNG final al soltar
   const handleFinalBlob = useCallback(async (blob: Blob) => {
     if (!connected) return;
     const arrayBuffer = await blob.arrayBuffer();
@@ -161,16 +168,6 @@ export default function App() {
     sendJSON({ type: 'draw-final', payload: { dataUrl: `data:image/png;base64,${base64}` } });
     addLog('Imagen final enviada', 'success');
   }, [connected, sendJSON, addLog]);
-
-  // Borrar lienzo
-  const clearCanvas = useCallback(() => {
-    const c = canvasRef.current; if (!c) return;
-    const ctx = c.getContext('2d'); if (!ctx) return;
-    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, c.width, c.height);
-    ctx.restore();
-    addLog('Canvas borrado', 'info');
-  }, [addLog]);
 
   // Estados WS / Prompt
   const sendState = useCallback((state: string) => {
@@ -185,7 +182,7 @@ export default function App() {
     addLog(`Prompt enviado: ${text}`, 'success');
   }, [connected, prompt, sendJSON, addLog]);
 
-  // Paleta por imagen (muestras simples)
+  // Paleta por imagen
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
@@ -236,9 +233,9 @@ export default function App() {
     <main className="app">
       <img src="/logo.png" alt="Logo" className="page-logo" />
 
-      {/* Panel lateral */}
+      {/* Panel */}
       <aside role="complementary" aria-label="Panel de control" className="panel">
-        {/* Estado + botón Ver sala */}
+        {/* Cabecera + Ver sala */}
         <div className="connection-status">
           <div className="status-indicator">
             <div className={`status-dot ${connected ? 'connected' : 'disconnected'}`} />
@@ -273,12 +270,7 @@ export default function App() {
               </label>
 
               <div className="room-actions">
-                <input
-                  className="room-link"
-                  readOnly
-                  value={WS_URL(roomInput || room)}
-                  aria-label="Link WSS"
-                />
+                <input className="room-link" readOnly value={WS_URL(roomInput || room)} aria-label="Link WSS" />
                 <button className="btn btn-primary btn-sm" onClick={handleCopyLink}>Copiar link</button>
               </div>
             </div>
@@ -343,7 +335,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Pincel (botones pequeños) */}
+        {/* Pincel (compacto) */}
         <div className="section">
           <h3>Pincel</h3>
 
@@ -407,7 +399,7 @@ export default function App() {
         </div>
       </aside>
 
-      {/* Stage (área de dibujo) */}
+      {/* Stage */}
       <section className="stage" ref={stageRef as any}>
         <div className="canvas-frame">
           <DrawingCanvas
@@ -422,9 +414,8 @@ export default function App() {
             onFinalBlob={handleFinalBlob}
             onDrawStart={() => sendState('drawing:start')}
             onDrawEnd={() => {
-              // snapshot para Undo/Redo
               const c = canvasRef.current;
-              if (c) setHist({ dataUrl: c.toDataURL('image/png') });
+              if (c) setCanvasHistoryState({ dataUrl: c.toDataURL('image/png') });
               sendState('drawing:end');
             }}
             connected={connected}

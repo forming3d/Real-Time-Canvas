@@ -17,7 +17,6 @@
   --clr-text: #e5e7eb;
 }
 
-/* Reset mínimo */
 html,
 body,
 #root {
@@ -65,8 +64,7 @@ body {
   background: #0a0a0a;
   border: 1px solid #262626;
   border-radius: 10px;
-
-  /* CLAVE para táctil: evita que el navegador “robe” el gesto */
+  /* crítico para pointer events en táctil */
   touch-action: none;
 }
 
@@ -82,7 +80,7 @@ body {
   z-index: 10;
 }
 
-/* ===== 3) Enlaces / Controles / Inputs ===== */
+/* ===== 3) Enlaces/Controles ===== */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -207,7 +205,7 @@ input[type="range"]::-moz-range-thumb {
   cursor: pointer;
 }
 
-/* Toolbar de dibujo (compacta) */
+/* Toolbar compacta */
 .toolbar {
   display: flex;
   gap: 8px;
@@ -260,7 +258,7 @@ input[type="range"]::-moz-range-thumb {
   overflow: hidden;
 }
 
-/* ===== 4) Zonas: LOG ===== */
+/* ===== 4) Zonas: LOG con scrollbar ===== */
 .log-container {
   max-height: 0;
   overflow: hidden;
@@ -306,21 +304,21 @@ input[type="range"]::-moz-range-thumb {
 .log-window {
   padding: 12px 16px;
   height: calc(100% - 44px);
+
   overflow: auto;
-  /* scroll vertical y horizontal si hace falta */
+  /* scroll vertical/horizontal si hace falta */
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   /* Firefox */
   scrollbar-color: var(--clr-primary) #1a1a1a;
+  scrollbar-gutter: stable both-edges;
+  /* no “saltos” al aparecer la barra */
+
   background: #1a1a1a;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
-
-  /* Reserva espacio fijo para la barra, evita “saltos” del contenido */
-  scrollbar-gutter: stable both-edges;
 }
 
-/* Scrollbar WebKit/Chromium */
 .log-window::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -368,7 +366,7 @@ input[type="range"]::-moz-range-thumb {
   cursor: pointer;
 }
 
-/* ColorPicker / paleta */
+/* Paleta */
 .cp-root {
   display: grid;
   gap: 10px;
@@ -421,7 +419,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* ===== 5) Responsive ===== */
-/* Tablet horizontal: forzamos 2 columnas, panel ajustable */
+/* Tablet horizontal: panel ajustable con clamp */
 @media (orientation: landscape) and (max-width: 1024px) {
   .app {
     grid-template-columns: clamp(260px, 40vw, 360px) 1fr;
@@ -432,7 +430,7 @@ input[type="range"]::-moz-range-thumb {
   }
 }
 
-/* Móvil / vertical: panel arriba sticky, stage abajo */
+/* Móvil / vertical: panel sticky arriba */
 @media (max-width: 960px) {
   .app {
     grid-template-columns: 1fr;

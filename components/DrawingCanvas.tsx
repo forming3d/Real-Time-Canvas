@@ -1,11 +1,12 @@
+// DrawingCanvas.tsx
 import React, { useEffect, useImperativeHandle, useRef } from "react";
 
 type Props = {
   width: number;
   height: number;
-  brushSize: number;         // px
-  brushColor: string;        // #rrggbb
-  brushOpacity: number;      // 1..100
+  brushSize: number;
+  brushColor: string;
+  brushOpacity: number;   // 1..100
   eraser: boolean;
   connected?: boolean;
   onLiveFrame?: (canvas: HTMLCanvasElement) => void;
@@ -14,64 +15,56 @@ type Props = {
   onDrawEnd?: () => void;
 };
 
-// Export como named para que coincida con tus imports: { DrawingCanvas }
 export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(
   (
     {
-      width,
-      height,
-      brushSize,
-      brushColor,
-      brushOpacity,
-      eraser,
+      width, height,
+      brushSize, brushColor, brushOpacity, eraser,
       connected = false,
-      onLiveFrame,
-      onFinalBlob,
-      onDrawStart,
-      onDrawEnd,
+      onLiveFrame, onFinalBlob, onDrawStart, onDrawEnd
     },
     ref
   ) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
 
-    // Estado por puntero (soporta multi-touch)
+    // Multi-touch: estado por pointerId
     const lastPts = useRef<Map<number, { x: number; y: number }>>(new Map());
     const drawing = useRef(false);
 
-    // Throttle para enviar frames live
+    // Throttle para live
     const lastLiveMs = useRef(0);
     const LIVE_INTERVAL_MS = 80;
 
     useImperativeHandle(ref, () => canvasRef.current as HTMLCanvasElement);
 
-    // Inicialización / reescala por DPR
+    // Inicializa/escala por DPR una sola vez o cuando cambia width/height
     useEffect(() => {
       const c = canvasRef.current!;
       const dpr = window.devicePixelRatio || 1;
-      const targetW = Math.max(1, Math.round(width));
-      const targetH = Math.max(1, Math.round(height));
 
-      c.width = Math.round(targetW * dpr);
-      c.height = Math.round(targetH * dpr);
-      c.style.width = `${targetW}px`;
-      c.style.height = `${targetH}px`;
+      const W = Math.max(1, Math.round(width));
+      const H = Math.max(1, Math.round(height));
+
+      c.width = Math.round(W * dpr);
+      c.height = Math.round(H * dpr);
+      c.style.width = `${W}px`;
+      c.style.height = `${H}px`;
 
       const ctx = c.getContext("2d");
       if (!ctx) return;
+
+      // Trabajamos en coordenadas lógicas (CSS px) con el ctx escalado
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.scale(dpr, dpr); // trabajar en unidades lógicas
+      ctx.scale(dpr, dpr);
       ctxRef.current = ctx;
     }, [width, height]);
 
-    // Helpers
+    // Utilidades
     const getPos = (e: PointerEvent) => {
       const c = canvasRef.current!;
       const rect = c.getBoundingClientRect();
-      return {
-        x: (e.clientX - rect.left),
-        y: (e.clientY - rect.top),
-      };
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
     };
 
     const applyBrush = () => {
@@ -99,7 +92,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(
       ctx.stroke();
     };
 
-    // Eventos Pointer (fluido en ratón y táctil)
+    // Pointer Events (ratón + táctil) — fluido + preventDefault
     useEffect(() => {
       const c = canvasRef.current!;
       const onDown = (e: PointerEvent) => {
@@ -121,7 +114,6 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(
         drawSeg(p1, p2);
         lastPts.current.set(e.pointerId, p2);
 
-        // Live frame throttled
         if (connected && onLiveFrame) {
           const now = performance.now();
           if (now - lastLiveMs.current >= LIVE_INTERVAL_MS) {
@@ -131,7 +123,7 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(
         }
       };
 
-      const finishPointer = async (e: PointerEvent) => {
+      const finishPointer = (e: PointerEvent) => {
         if (!lastPts.current.has(e.pointerId)) return;
         e.preventDefault();
         lastPts.current.delete(e.pointerId);
@@ -139,15 +131,11 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(
         if (lastPts.current.size === 0 && drawing.current) {
           drawing.current = false;
           onDrawEnd?.();
-
-          if (onFinalBlob) {
-            // PNG final del trazo
-            c.toBlob((blob) => blob && onFinalBlob(blob), "image/png", 1);
-          }
+          if (onFinalBlob) c.toBlob((b) => b && onFinalBlob(b), "image/png", 1);
         }
       };
 
-      // Importante: listeners NO pasivos para poder preventDefault
+      // Listeners NO pasivos (para poder preventDefault)
       c.addEventListener("pointerdown", onDown, { passive: false });
       c.addEventListener("pointermove", onMove, { passive: false });
       c.addEventListener("pointerup", finishPointer, { passive: false });

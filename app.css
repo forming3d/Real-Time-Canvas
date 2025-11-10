@@ -87,26 +87,41 @@ body {
 }
 
 .canvas-frame {
-  width: min(90%, 20vmin, 50px);
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
   margin: 0 auto;
+  padding: 8px;
 }
 
-/* Canvas visible y táctil fluido */
+/* Canvas visible, centrado y responsivo */
 .canvas {
   display: block;
-  width: 100%;
+  /* No fuerza width absoluto aquí: lo fija JS; solo limita */
+  max-width: 100%;
+  /* Mantiene cuadrado y permite escalar proporcionalmente */
+  aspect-ratio: 1 / 1;
   height: auto;
   background: #0a0a0a;
   border: 2px solid #262626;
   border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-  /* crítico para pointer events en táctil */
   touch-action: none;
   transition: border-color 0.3s ease;
 }
 
 .canvas:active {
   border-color: var(--clr-primary);
+}
+
+/* Opcional: en tablet horizontal reduce un poco el panel para dar aire al canvas */
+@media (max-width: 1024px) and (orientation: landscape) {
+  :root {
+    --panel-min: 360px;
+    --panel-ideal: 36vw;
+    --panel-max: 360px;
+  }
 }
 
 /* Logo */
@@ -740,16 +755,8 @@ input[type="range"]::-moz-range-thumb {
     z-index: 5 !important;
   }
 
-  .canvas-frame {
-    width: 20vmin !important;
-    max-width: 100px !important;
-  }
-
   .stage {
     padding: 10px !important;
-    display: flex !important;
-    justify-content: center !important;
-    align-items: center !important;
   }
 
   .log-container.expanded {
@@ -794,11 +801,6 @@ input[type="range"]::-moz-range-thumb {
     padding: 5px !important;
   }
 
-  .canvas-frame {
-    width: 55vmin !important;
-    max-width: 450px !important;
-  }
-
   .section {
     padding: 5px 10px !important;
   }
@@ -834,10 +836,6 @@ input[type="range"]::-moz-range-thumb {
   .stage {
     height: 60vh !important;
     padding: 10px !important;
-  }
-
-  .canvas-frame {
-    width: 70vmin !important;
   }
 
   .page-logo {

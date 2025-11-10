@@ -98,21 +98,27 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Tamaño canvas responsive (tablet horizontal)
+  // Tamaño canvas responsive: usa el menor entre ancho y alto de la Stage
   useEffect(() => {
     const stageEl = stageRef.current;
     if (!stageEl) return;
     const compute = () => {
       const b = stageEl.getBoundingClientRect();
-      const avail = Math.max(0, b.width - 40);
+      const PAD = 24; // margen de seguridad visual
+      const avail = Math.max(0, Math.min(b.width, b.height) - PAD);
       const next = Math.round(Math.min(512, Math.max(256, avail || 512)));
       setCanvasSize(prev => (Math.abs(prev - next) > 1 ? next : prev));
     };
     compute();
-    let ro: ResizeObserver | null = null;
-    if ('ResizeObserver' in window) { ro = new ResizeObserver(compute); ro.observe(stageEl); }
-    else { window.addEventListener('resize', compute); }
-    return () => { ro?.disconnect(); window.removeEventListener('resize', compute); };
+    const ro = new ResizeObserver(compute);
+    ro.observe(stageEl);
+    window.addEventListener('resize', compute);
+    window.addEventListener('orientationchange', compute);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', compute);
+      window.removeEventListener('orientationchange', compute);
+    };
   }, []);
 
   // Restaurar snapshot sin re-escalar

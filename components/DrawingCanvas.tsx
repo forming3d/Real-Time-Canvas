@@ -45,10 +45,11 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(
       const W = Math.max(1, Math.round(width));
       const H = Math.max(1, Math.round(height));
 
-      c.width = Math.round(W * dpr);
-      c.height = Math.round(H * dpr);
-      c.style.width = `${W}px`;
-      c.style.height = `${H}px`;
+    c.width = Math.round(W * dpr);
+    c.height = Math.round(H * dpr);
+    // Fijamos solo el ancho lógico; la altura queda auto (aspect-ratio: 1/1 en CSS)
+    c.style.width = `${W}px`;
+    c.style.height = 'auto';
 
       const ctx = c.getContext("2d");
       if (!ctx) return;

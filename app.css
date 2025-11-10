@@ -853,12 +853,13 @@ input[type="range"]::-moz-range-thumb {
   }
 
   .stage {
-    padding: 50px 10px 10px !important;
+    padding: 5px 10px 10px !important;
     align-items: flex-start !important;
   }
 
   .canvas-frame {
-    padding: 3px 12px 12px !important;
+    padding: 0 12px 12px !important;
+    place-items: start center !important;
   }
 
   .log-container.expanded {

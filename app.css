@@ -1,13 +1,13 @@
 /* ===== 1) Básicos ===== */
 :root {
   color-scheme: dark;
-  --panel-min: 200px;
-  --panel-ideal: 22vw;
-  --panel-max: 260px;
+  --panel-min: 180px;
+  --panel-ideal: 18vw;
+  --panel-max: 240px;
 
-  --log-h-s: 25vh;
-  --log-h-m: 30vh;
-  --log-h-l: 35vh;
+  --log-h-s: 22vh;
+  --log-h-m: 25vh;
+  --log-h-l: 30vh;
 
   --clr-primary: #7c3aed;
   --clr-border: #2a2a2a;
@@ -79,8 +79,7 @@ body {
 }
 
 .canvas-frame {
-  width: min(100%, 50vmin);
-  max-width: 400px;
+  width: min(90%, 45vmin, 380px);
   margin: 0 auto;
 }
 
@@ -406,14 +405,15 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .log-container.expanded {
-  display: block;
+  display: block !important;
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
-  max-height: var(--log-h-s);
+  height: 22vh !important;
+  max-height: 22vh !important;
   background: var(--clr-bg-1);
-  border-top: 1px solid var(--clr-border);
+  border-top: 2px solid var(--clr-primary);
   box-shadow: 0 -6px 20px rgba(0, 0, 0, .45);
   z-index: 2147483647;
   padding-bottom: env(safe-area-inset-bottom, 0);
@@ -443,12 +443,11 @@ input[type="range"]::-moz-range-thumb {
 .log-window {
   padding: 8px 12px;
   height: calc(100% - 38px);
-  overflow-y: auto;
+  overflow-y: scroll !important;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
-  scrollbar-color: var(--clr-primary) #1a1a1a;
-  scrollbar-gutter: stable;
+  scrollbar-width: auto !important;
+  scrollbar-color: var(--clr-primary) #1a1a1a !important;
   background: #1a1a1a;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 11px;
@@ -456,17 +455,19 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .log-window::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 12px !important;
+  height: 12px !important;
 }
 
 .log-window::-webkit-scrollbar-thumb {
-  background: var(--clr-primary);
-  border-radius: 8px;
+  background: var(--clr-primary) !important;
+  border-radius: 6px;
+  border: 2px solid #1a1a1a;
 }
 
 .log-window::-webkit-scrollbar-track {
-  background: #1a1a1a;
+  background: #0a0a0a !important;
+  border-radius: 6px;
 }
 
 .log-entry {

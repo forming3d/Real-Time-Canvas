@@ -1,9 +1,9 @@
 /* ===== 1) Básicos ===== */
 :root {
   color-scheme: dark;
-  --panel-min: 280px;
-  --panel-ideal: 28vw;
-  --panel-max: 350px;
+  --panel-min: 400px;
+  --panel-ideal: 42vw;
+  --panel-max: 500px;
 
   --log-h-s: 22vh;
   --log-h-m: 25vh;
@@ -86,7 +86,7 @@ body {
 }
 
 .canvas-frame {
-  width: min(80%, 35vmin, 320px);
+  width: min(90%, 50vmin, 450px);
   margin: 0 auto;
 }
 
@@ -591,9 +591,9 @@ input[type="range"]::-moz-range-thumb {
   and (orientation: landscape) {
   
   :root {
-    --panel-min: 260px;
-    --panel-ideal: 26vw;
-    --panel-max: 320px;
+    --panel-min: 380px;
+    --panel-ideal: 40vw;
+    --panel-max: 450px;
   }
 
   html, body {
@@ -607,12 +607,12 @@ input[type="range"]::-moz-range-thumb {
   }
 
   .canvas-frame {
-    width: 32vmin !important;
-    max-width: 300px !important;
+    width: 48vmin !important;
+    max-width: 420px !important;
   }
 
   .stage {
-    padding: 5px !important;
+    padding: 10px !important;
   }
 
   .log-container.expanded {

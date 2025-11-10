@@ -260,7 +260,10 @@ export default function App() {
     const cx = 0.5, cy = 0.5;
     const dx = x - cx, dy = y - cy;
     const r = Math.sqrt(dx*dx + dy*dy);         // 0..~0.71
-    const angleDeg = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360; // 0° a la derecha, CW
+    
+    // Ángulo CCW -> convertir a CW para coincidir con conic-gradient
+    const angleDeg = (Math.atan2(y - 0.5, x - 0.5) * 180) / Math.PI; // -180..180, CCW
+    const hue = (360 - ((angleDeg + 360) % 360)) % 360;              // 0..360, CW
 
     // Tamaño del cuadrado central (igual que CSS: 40% del contenedor)
     const SQ = 0.40;
@@ -276,7 +279,7 @@ export default function App() {
       setLum(ly);
     } else {
       // Selección de hue en el anillo
-      setHue(angleDeg);
+      setHue(hue);
     }
   }, []);
 

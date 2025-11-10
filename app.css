@@ -122,6 +122,14 @@ body {
     --panel-ideal: 36vw;
     --panel-max: 360px;
   }
+  
+  .stage {
+    padding: 12px;
+  }
+  
+  .canvas-frame {
+    padding: 12px;
+  }
 }
 
 /* Logo */

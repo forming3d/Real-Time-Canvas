@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import "react-colorful/dist/index.css"import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DrawingCanvas } from './components/DrawingCanvas';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useHistory } from './hooks/useHistory';
@@ -102,22 +102,40 @@ export default function App() {
   useEffect(() => {
     const stageEl = stageRef.current;
     if (!stageEl) return;
+    // ---- límites fáciles de ajustar ----
+    const MIN_PX = 240;
+    const MAX_DESKTOP_PX = 720;             // tope en PC
+    const MAX_TABLET_LANDSCAPE_PX = 250;    // tope en tablet horizontal
+    const MAX_TABLET_PORTRAIT_PX  = 300;    // tope en tablet vertical
+    const PAD = 24;                         // margen de respiración
+
     const compute = () => {
       const b = stageEl.getBoundingClientRect();
-      const PAD = 24; // margen de seguridad visual
+      // espacio cuadrado disponible (teniendo en cuenta alto)
       const avail = Math.max(0, Math.min(b.width, b.height) - PAD);
-      const next = Math.round(Math.min(512, Math.max(256, avail || 512)));
+      // breakpoints
+      const isTablet = window.matchMedia("(max-width: 1024px)").matches;
+      const isLandscape = window.matchMedia("(orientation: landscape)").matches;
+      // tope según dispositivo/orientación
+      const cap = isTablet
+        ? (isLandscape ? MAX_TABLET_LANDSCAPE_PX : MAX_TABLET_PORTRAIT_PX)
+        : MAX_DESKTOP_PX;
+      const next = Math.round(
+        Math.max(MIN_PX, Math.min(avail, cap)) // respeta el tope y el espacio real
+      );
       setCanvasSize(prev => (Math.abs(prev - next) > 1 ? next : prev));
     };
+
+    // primeras y sucesivas medidas
     compute();
     const ro = new ResizeObserver(compute);
     ro.observe(stageEl);
-    window.addEventListener('resize', compute);
-    window.addEventListener('orientationchange', compute);
+    window.addEventListener("resize", compute);
+    window.addEventListener("orientationchange", compute);
     return () => {
       ro.disconnect();
-      window.removeEventListener('resize', compute);
-      window.removeEventListener('orientationchange', compute);
+      window.removeEventListener("resize", compute);
+      window.removeEventListener("orientationchange", compute);
     };
   }, []);
 

@@ -161,9 +161,9 @@ body {
 .stage {
   position: relative;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
-  padding: 30px 5px 5px;
+  padding: 20px 5px;
   height: 100vh !important;
   overflow: hidden !important;
   background: radial-gradient(ellipse at center, #1a1a1a 0%, var(--clr-bg-0) 70%);
@@ -206,12 +206,13 @@ body {
   }
   
   .stage {
-    padding: 60px 12px 12px;
-    align-items: flex-start;
+    padding: 12px;
+    align-items: center;
+    justify-content: center;
   }
   
   .canvas-frame {
-    padding: 5px 12px 12px;
+    padding: 0 12px;
   }
 }
 
@@ -852,15 +853,19 @@ input[type="range"]::-moz-range-thumb {
   }
 
   .stage {
-    padding: 5px 10px 10px !important;
-    align-items: flex-start !important;
+    padding: 12px 10px 12px !important;
+    align-items: center !important;
+    justify-content: center !important;
   }
 
   .canvas-frame {
-    padding: 0 12px 12px !important;
-    place-items: start center !important;
+    padding: 0 12px !important;
+    place-items: center center !important;
     width: 100% !important;
     height: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
   }
   
   .canvas {
@@ -908,29 +913,27 @@ input[type="range"]::-moz-range-thumb {
 
   .stage {
     height: 65vh !important;
-    padding: 0 !important;
+    padding: 12px 5px 12px !important;
     margin: 0 !important;
     align-items: flex-start !important;
-    justify-content: flex-start !important;
+    justify-content: center !important;
     gap: 0 !important;
   }
 
   .canvas-frame {
-    padding: 0 !important;
+    padding: 0 8px !important;
     margin: 0 !important;
-    margin-top: 0 !important;
-    place-items: start center !important;
+    place-items: center center !important;
     width: 100% !important;
     height: 100% !important;
     display: flex !important;
-    align-items: flex-start !important;
+    align-items: center !important;
     justify-content: center !important;
     gap: 0 !important;
   }
   
   .canvas {
     margin: 0 !important;
-    margin-top: 0 !important;
     padding: 0 !important;
     /* JavaScript controla dimensiones - CSS solo limita y decora */
     max-width: 100% !important;

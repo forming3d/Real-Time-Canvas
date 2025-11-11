@@ -902,15 +902,16 @@ input[type="range"]::-moz-range-thumb {
 
   .stage {
     height: 65vh !important;
-    padding: 0 5px 60px !important;
+    padding: 0 5px 12px !important;
     align-items: flex-start !important;
-    justify-content: flex-start !important;
+    justify-content: space-between !important;
   }
 
   .canvas-frame {
     padding: 0 8px !important;
-    place-items: start center !important;
-    margin-top: 0 !important;
+    place-items: center center !important;
+    margin: 0 !important;
+    height: 100% !important;
   }
   
   .canvas {
@@ -918,7 +919,7 @@ input[type="range"]::-moz-range-thumb {
     width: auto !important;
     height: auto !important;
     max-width: 100% !important;
-    max-height: 100% !important;
+    max-height: calc(65vh - 24px) !important;
   }
 
   .section {

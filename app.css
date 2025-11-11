@@ -182,11 +182,9 @@ body {
 /* Canvas visible, centrado y responsivo */
 .canvas {
   display: block;
-  /* No fuerza width absoluto aquí: lo fija JS; solo limita */
+  /* JavaScript controla TODAS las dimensiones vía estilos inline - CSS solo decora */
   max-width: 100%;
-  /* Mantiene cuadrado y permite escalar proporcionalmente */
-  aspect-ratio: 1 / 1;
-  height: auto;
+  max-height: 100%;
   background: #0a0a0a;
   border: 2px solid #262626;
   border-radius: 12px;
@@ -861,6 +859,14 @@ input[type="range"]::-moz-range-thumb {
   .canvas-frame {
     padding: 0 12px 12px !important;
     place-items: start center !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
+  
+  .canvas {
+    /* JavaScript controla TODAS las dimensiones - NO interferir */
+    max-width: 100% !important;
+    max-height: 100% !important;
   }
 
   .log-container.expanded {

@@ -123,7 +123,14 @@ export default function App() {
       const next = Math.round(
         Math.max(MIN_PX, Math.min(avail, cap)) // respeta el tope y el espacio real
       );
-      setCanvasSize(prev => (Math.abs(prev - next) > 1 ? next : prev));
+      // Aseguramos que siempre sea cuadrado
+      setCanvasSize(prev => {
+        if (Math.abs(prev - next) > 1) {
+          console.log(`[Canvas] Tamaño calculado: ${next}px (cuadrado)`);
+          return next;
+        }
+        return prev;
+      });
     };
 
     // primeras y sucesivas medidas

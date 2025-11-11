@@ -106,7 +106,7 @@ export default function App() {
     const MIN_PX = 240;
     const MAX_DESKTOP_PX = 720;             // tope en PC
     const MAX_TABLET_LANDSCAPE_PX = 450;    // tope en tablet horizontal
-    const MAX_TABLET_PORTRAIT_PX  = 400;    // tope en tablet vertical (aumentado)
+    const MAX_TABLET_PORTRAIT_PX  = 400;    // tope en tablet vertical MÁXIMO
     const PAD = 0;                          // sin margen = pegado al borde
 
     const compute = () => {

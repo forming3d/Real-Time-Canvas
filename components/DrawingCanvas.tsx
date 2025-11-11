@@ -47,9 +47,9 @@ export const DrawingCanvas = React.forwardRef<HTMLCanvasElement, Props>(
 
     c.width = Math.round(W * dpr);
     c.height = Math.round(H * dpr);
-    // Fijamos solo el ancho lógico; la altura queda auto (aspect-ratio: 1/1 en CSS)
+    // Forzamos dimensiones cuadradas siempre
     c.style.width = `${W}px`;
-    c.style.height = 'auto';
+    c.style.height = `${H}px`;
 
       const ctx = c.getContext("2d");
       if (!ctx) return;

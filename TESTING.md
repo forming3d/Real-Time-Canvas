@@ -14,57 +14,23 @@ El WebSocket entraba en un **bucle infinito de conexión/desconexión** debido a
 
 ## 📋 Cómo Probar
 
-### 1. Iniciar el Servidor
+### 1. Verificar Despliegue en Render
 
-```bash
-node server.js
-```
+Asegúrate de que la aplicación esté desplegada y funcionando en Render. Verifica:
+- La aplicación carga correctamente en tu URL de Render
+- Los logs de Render muestran que el servidor está corriendo
+- El puerto se asigna automáticamente via `process.env.PORT`
 
-Deberías ver:
-```
-HTTP+WS on :8080 (path /ws)
-```
+### 2. Probar con la Aplicación Web
 
-### 2. Probar con Script de Prueba
-
-En otra terminal:
-
-```bash
-node test-websocket.js
-```
-
-Deberías ver en el script:
-```
-🧪 Conectando a: ws://localhost:8080/ws?room=TEST123
-✅ Conectado!
-📥 Recibido: {"type":"hello","payload":{"room":"TEST123"}}
-📤 Enviando: {"type":"proc","payload":"Hello from test script!"}
-📤 Enviando: {"type":"state","payload":"drawing:start"}
-👋 Cerrando conexión
-🔌 Desconectado
-```
-
-En el servidor deberías ver:
-```
-✅ [TEST123] Cliente ::1:xxxxx conectado. Total: 1
-👋 [TEST123] Saludo enviado a ::1:xxxxx
-📥 [TEST123] ::1:xxxxx envió TEXTO (48 bytes): {"type":"proc","payload":"Hello from test script!"}
-📤 [TEST123] Reenviado a 0 de 0 cliente(s)
-📥 [TEST123] ::1:xxxxx envió TEXTO (41 bytes): {"type":"state","payload":"drawing:start"}
-📤 [TEST123] Reenviado a 0 de 0 cliente(s)
-🔌 [TEST123] ::1:xxxxx desconectado (código: 1000). Quedan: 0
-```
-
-### 3. Probar con la Aplicación Web
-
-1. Abre el navegador en tu aplicación
+1. Abre el navegador en tu aplicación desplegada en Render (ej: `https://tu-app.onrender.com`)
 2. Abre la consola del navegador (F12)
 3. Presiona la tecla `L` para ver el panel de logs
 4. Dibuja algo en el canvas
 
 **En la consola del navegador deberías ver:**
 ```
-✅ WebSocket conectado: ws://localhost:8080/ws?room=XXXXXX
+✅ WebSocket conectado: wss://tu-app.onrender.com/ws?room=XXXXXX
 📥 Mensaje recibido: string {"type":"hello","payload":{"room":"XXXXXX"}}
 ✏️ DrawingCanvas: Iniciando dibujo
 🔄 Enviando estado: drawing:start
@@ -80,33 +46,33 @@ En el servidor deberías ver:
 📤 Enviando binario: 12345 bytes
 ```
 
-**En el servidor deberías ver:**
+**En los logs de Render deberías ver:**
 ```
-✅ [XXXXXX] Cliente ::1:xxxxx conectado. Total: 1
-👋 [XXXXXX] Saludo enviado a ::1:xxxxx
-📥 [XXXXXX] ::1:xxxxx envió TEXTO (47 bytes): {"type":"state","payload":"drawing:start"}
+✅ [XXXXXX] Cliente xxxxx conectado. Total: 1
+👋 [XXXXXX] Saludo enviado a xxxxx
+📥 [XXXXXX] xxxxx envió TEXTO (47 bytes): {"type":"state","payload":"drawing:start"}
 📤 [XXXXXX] Reenviado a 0 de 0 cliente(s)
-📥 [XXXXXX] ::1:xxxxx envió TEXTO (5678 bytes): {"type":"draw","payload":"data:image/jpeg...
+📥 [XXXXXX] xxxxx envió TEXTO (5678 bytes): {"type":"draw","payload":"data:image/jpeg...
 📤 [XXXXXX] Reenviado a 0 de 0 cliente(s)
-📥 [XXXXXX] ::1:xxxxx envió TEXTO (45 bytes): {"type":"state","payload":"drawing:end"}
+📥 [XXXXXX] xxxxx envió TEXTO (45 bytes): {"type":"state","payload":"drawing:end"}
 📤 [XXXXXX] Reenviado a 0 de 0 cliente(s)
-📥 [XXXXXX] ::1:xxxxx envió BINARIO (12345 bytes)
+📥 [XXXXXX] xxxxx envió BINARIO (12345 bytes)
 📤 [XXXXXX] Reenviado a 0 de 0 cliente(s)
 ```
 
-### 4. Probar con 2 Clientes (Verificar Broadcasting)
+### 3. Probar con 2 Clientes (Verificar Broadcasting)
 
-1. Abre la aplicación en 2 pestañas del navegador
+1. Abre la aplicación en 2 pestañas del navegador (o 2 navegadores diferentes)
 2. En la primera pestaña, copia el link de la sala
 3. En la segunda pestaña, pega la URL con el mismo room
 4. Dibuja en la primera pestaña
 5. La segunda pestaña NO verá el dibujo (solo el servidor reenvía a OTROS clientes)
 
-**En el servidor deberías ver:**
+**En los logs de Render deberías ver:**
 ```
-✅ [XXXXXX] Cliente ::1:xxxxx conectado. Total: 1
-✅ [XXXXXX] Cliente ::1:yyyyy conectado. Total: 2
-📥 [XXXXXX] ::1:xxxxx envió TEXTO (...bytes)
+✅ [XXXXXX] Cliente xxxxx conectado. Total: 1
+✅ [XXXXXX] Cliente yyyyy conectado. Total: 2
+📥 [XXXXXX] xxxxx envió TEXTO (...bytes)
 📤 [XXXXXX] Reenviado a 1 de 1 cliente(s)  ← ¡Ahora sí hay destinatarios!
 ```
 
@@ -150,7 +116,9 @@ En el servidor deberías ver:
 
 1. **Limpia la caché del navegador** (Ctrl+Shift+Delete)
 2. **Recarga la aplicación** con Ctrl+F5
-3. **Verifica que usaste los archivos actualizados**:
+3. **Verifica que la aplicación esté correctamente desplegada en Render**
+4. **Revisa los logs de Render** para ver si hay errores del servidor
+5. **Verifica que usaste los archivos actualizados**:
    - `hooks/useWebSocket.ts` debe usar `useRef` para callbacks
    - `App.tsx` debe usar `nextLogIdRef` en lugar de `nextLogId`
 
@@ -159,12 +127,14 @@ En el servidor deberías ver:
 1. Verifica que el estado `connected` sea `true` (debe aparecer en verde en el panel)
 2. Abre la consola del navegador ANTES de dibujar
 3. Verifica que no haya errores de JavaScript en la consola
+4. Verifica que la conexión WebSocket use `wss://` (no `ws://`) en producción
 
 ### Si el servidor no recibe mensajes:
 
-1. Verifica que el WebSocket esté conectado (debe ver "✅ Cliente conectado")
+1. Verifica que el WebSocket esté conectado (revisa los logs de Render para ver "✅ Cliente conectado")
 2. Verifica que NO se desconecte inmediatamente después
-3. Si se desconecta con código 1006, puede ser un problema de firewall o proxy
+3. Si se desconecta con código 1006, puede ser un problema de configuración en Render o firewall
+4. Revisa los logs de Render para ver errores específicos
 
 ---
 

@@ -25,39 +25,36 @@
 
 ## 🔥 PASOS OBLIGATORIOS PARA QUE FUNCIONE:
 
-### 1. REINICIA EL SERVIDOR VITE
-```bash
-# En tu terminal, presiona Ctrl+C para detener
-# Luego ejecuta de nuevo:
-npm run dev
-```
+### 1. VERIFICA DESPLIEGUE EN RENDER
+Asegúrate de que la aplicación esté correctamente desplegada en Render y que el build de producción esté actualizado.
 
-### 2. LIMPIA CACHÉ DE BRAVE - MUY IMPORTANTE
+### 2. LIMPIA CACHÉ DEL NAVEGADOR - MUY IMPORTANTE
 
 **Opción A (Recomendada):**
-1. Abre Brave Settings: `brave://settings/clearBrowserData`
-2. Selecciona "Advanced"
-3. Rango de tiempo: "Todo el tiempo"
-4. Marca SOLO estas opciones:
-   - ✅ Imágenes y archivos en caché
-   - ✅ Cookies y otros datos de sitios
-   - ✅ Datos de sitios alojados en la aplicación
-5. Click "Borrar datos"
+1. Abre la configuración de tu navegador (Chrome/Brave/Edge)
+2. Ve a "Borrar datos de navegación" o "Clear browsing data"
+3. Selecciona "Advanced" o "Avanzado"
+4. Rango de tiempo: "Todo el tiempo" o "All time"
+5. Marca SOLO estas opciones:
+   - ✅ Imágenes y archivos en caché / Cached images and files
+   - ✅ Cookies y otros datos de sitios / Cookies and other site data
+   - ✅ Datos de sitios alojados en la aplicación / Hosted app data
+6. Click "Borrar datos" / "Clear data"
 
 **Opción B (Más rápida):**
-1. `Ctrl + Shift + Delete`
-2. "Todo el tiempo"
-3. Marcar caché y cookies
-4. Borrar
+1. `Ctrl + Shift + Delete` (Windows/Linux) o `Cmd + Shift + Delete` (Mac)
+2. Selecciona "Todo el tiempo" / "All time"
+3. Marca caché y cookies
+4. Borrar / Clear
 
 ### 3. MODO DESARROLLADOR (TEMPORAL)
 
 Para probar sin caché:
 1. Presiona `F12` (DevTools)
-2. Ve a pestaña "Network"
-3. Marca `☑️ Disable cache`
+2. Ve a pestaña "Network" / "Red"
+3. Marca `☑️ Disable cache` / `☑️ Desactivar caché`
 4. **Mantén DevTools abierto**
-5. Recarga: `Ctrl + Shift + R`
+5. Recarga: `Ctrl + Shift + R` (Windows/Linux) o `Cmd + Shift + R` (Mac)
 
 ### 4. VERIFICA LA RESOLUCIÓN
 
@@ -169,13 +166,9 @@ console.log('Solo UNO debe ser TRUE según tu orientación');
 
 ## 🚨 SI AÚN NO FUNCIONA:
 
-### 1. Verifica que Vite recargó:
-En la terminal de Vite deberías ver:
-```
-hmr update /app.css
-```
-
-Si NO ves esto, Vite no detectó los cambios.
+### 1. Verifica que el build en Render esté actualizado:
+- Revisa los logs de Render para confirmar que el build se completó correctamente
+- Asegúrate de que los cambios estén en el repositorio y que Render haya hecho un nuevo deploy
 
 ### 2. Force Reload desde DevTools:
 1. F12 (abrir DevTools)
@@ -184,16 +177,16 @@ Si NO ves esto, Vite no detectó los cambios.
 
 ### 3. Modo Incógnito:
 ```
-Ctrl + Shift + N
-Abrir localhost:5173
+Ctrl + Shift + N (Windows/Linux) o Cmd + Shift + N (Mac)
+Abrir tu aplicación en Render
 ```
 Si funciona aquí → problema de caché
 
 ### 4. Otro navegador:
 ```
-Abre en Chrome/Edge/Firefox
+Abre en Chrome/Edge/Firefox/Safari
 ```
-Si funciona → problema específico de Brave
+Si funciona → problema específico del navegador original
 
 ---
 
@@ -253,8 +246,8 @@ document.querySelector('.log-container').style.height = '15vh';
 ---
 
 **¿Hiciste todos los pasos?**
-1. ☐ Reiniciaste servidor Vite
-2. ☐ Limpiaste caché de Brave
+1. ☐ Verificaste despliegue en Render
+2. ☐ Limpiaste caché del navegador
 3. ☐ Recargaste con Ctrl+Shift+R
 4. ☐ Ejecutaste el test en Console
 5. ☐ Verificaste media query activo

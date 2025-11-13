@@ -61,7 +61,7 @@ types.ts                      # TypeScript types
 > Consejo: antes de enviar un frame live, comprueba `ws.bufferedAmount` y descarta si excede `256 kB` en móvil/tablet.
 
 ## Integración con TouchDesigner
-1. Añade un **WebSocket DAT** apuntando a `ws://TU_HOST:8080?room=XXXXXX` (o `wss://` en producción).
+1. Añade un **WebSocket DAT** apuntando a `wss://TU_DOMINIO_RENDER.onrender.com/ws?room=XXXXXX` (usa `wss://` para conexiones seguras en Render).
 2. Crea un **Movie File In TOP** y nómbralo `canvas_in` (o deja que el script busque el primero disponible).
 3. Copia el archivo `websocket1_callbacks.py` incluido en este repositorio (ver documento inferior) en el DAT. Este script:
    - Prioriza el PNG final y mantiene un *lock* para ignorar JPEG en idle.
@@ -80,31 +80,31 @@ El script completo actualizado está disponible en [TOUCHDESIGNER_INTEGRATION.md
 
 Más recomendaciones prácticas en [RESPONSIVE_DESIGN.md](./RESPONSIVE_DESIGN.md).
 
-## 🚀 Inicio Rápido
+## 🚀 Despliegue en Render
 
-```bash
-# Instalar dependencias
-npm install
+La aplicación está configurada para ejecutarse en **Render** como servicio web. El servidor sirve automáticamente el build de producción y maneja las conexiones WebSocket.
 
-# Iniciar servidor WebSocket
-node server.js
+### Configuración en Render:
+1. **Build Command**: `npm install && npm run build`
+2. **Start Command**: `npm start` (ejecuta `node server.js`)
+3. **Puerto**: Render asigna automáticamente el puerto via `process.env.PORT`
 
-# En otra terminal, iniciar Vite dev
-npm run dev
-```
-
-Abre http://localhost:5173 y empieza a dibujar. Los logs aparecen en:
-- **Navegador (F12)**: Mensajes enviados/recibidos
-- **Terminal del servidor**: Conexiones y reenvíos
-- **Panel LOG (tecla L)**: Eventos de la aplicación
+### Acceso:
+- La aplicación estará disponible en tu URL de Render (ej: `https://tu-app.onrender.com`)
+- El WebSocket se conecta automáticamente usando `wss://` en producción
+- Los logs aparecen en:
+  - **Navegador (F12)**: Mensajes enviados/recibidos
+  - **Logs de Render**: Conexiones y reenvíos del servidor
+  - **Panel LOG (tecla L)**: Eventos de la aplicación
 
 ## 🐛 Troubleshooting
 
 ### WebSocket no conecta o se desconecta constantemente
 ✅ **SOLUCIONADO** en esta versión. Si aún ocurre:
-1. Verifica que no haya otro proceso en puerto 8080
-2. Revisa la consola del navegador (F12) para ver logs detallados
-3. Consulta [TESTING.md](./TESTING.md) para diagnóstico completo
+1. Verifica que la aplicación esté desplegada correctamente en Render
+2. Revisa los logs de Render para ver errores del servidor
+3. Revisa la consola del navegador (F12) para ver logs detallados
+4. Consulta [TESTING.md](./TESTING.md) para diagnóstico completo
 
 ### No se envían datos al dibujar
 ✅ **SOLUCIONADO** - El hook useWebSocket ahora usa refs estables

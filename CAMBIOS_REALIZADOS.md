@@ -139,17 +139,14 @@ Agregado console.log en todos los puntos críticos:
 
 ## 🧪 Cómo Verificar que Funciona
 
-### Prueba Rápida:
+### Prueba en Producción (Render):
 
-```bash
-# Terminal 1
-node server.js
+1. Asegúrate de que la aplicación esté desplegada en Render
+2. Abre la aplicación en tu navegador
+3. Abre la consola del navegador (F12)
+4. Verifica que el WebSocket se conecte correctamente usando `wss://`
 
-# Terminal 2
-node test-websocket.js
-```
-
-Deberías ver intercambio de mensajes sin reconexiones.
+Deberías ver intercambio de mensajes sin reconexiones en los logs del navegador y en los logs de Render.
 
 ### Prueba Completa:
 

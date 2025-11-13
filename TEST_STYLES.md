@@ -2,24 +2,27 @@
 
 ## Pasos para verificar que los cambios se aplican:
 
-### 1. LIMPIA EL CACHE DE BRAVE (MUY IMPORTANTE)
+### 1. VERIFICA DESPLIEGUE EN RENDER
+Asegúrate de que la aplicación esté desplegada en Render y que el build de producción incluya los cambios más recientes.
 
-**En Brave:**
+### 2. LIMPIA EL CACHE DEL NAVEGADOR (MUY IMPORTANTE)
+
+**En tu navegador:**
 1. Presiona `Ctrl + Shift + Delete` (Windows/Linux) o `Cmd + Shift + Delete` (Mac)
-2. Selecciona "Última hora" o "Todo el tiempo"
+2. Selecciona "Todo el tiempo" / "All time"
 3. Marca SOLO:
-   - ✅ Imágenes y archivos en caché
-   - ✅ Cookies y otros datos del sitio
-4. Click en "Borrar datos"
-5. Cierra y vuelve a abrir Brave
+   - ✅ Imágenes y archivos en caché / Cached images and files
+   - ✅ Cookies y otros datos del sitio / Cookies and other site data
+4. Click en "Borrar datos" / "Clear data"
+5. Cierra y vuelve a abrir el navegador
 
-### 2. RECARGA FORZADA
+### 3. RECARGA FORZADA
 
-1. Abre la aplicación
-2. Presiona `Ctrl + Shift + R` (Windows) o `Cmd + Shift + R` (Mac)
+1. Abre la aplicación en tu URL de Render
+2. Presiona `Ctrl + Shift + R` (Windows/Linux) o `Cmd + Shift + R` (Mac)
 3. Espera a que cargue completamente
 
-### 3. ABRE EL INSPECTOR
+### 4. ABRE EL INSPECTOR
 
 1. Presiona `F12` para abrir DevTools
 2. Ve a la pestaña "Console"
@@ -31,7 +34,7 @@ console.log('Canvas width:', getComputedStyle(document.querySelector('.canvas-fr
 console.log('App height:', getComputedStyle(document.querySelector('.app')).height);
 ```
 
-### 4. VERIFICA EL CSS
+### 5. VERIFICA EL CSS
 
 En la pestaña "Elements" de DevTools:
 1. Selecciona el elemento `.app`
@@ -70,21 +73,21 @@ En la pestaña "Elements" de DevTools:
 ```
 1. F12 (abrir DevTools)
 2. Click derecho en el botón de recarga
-3. Seleccionar "Empty Cache and Hard Reload"
+3. Seleccionar "Empty Cache and Hard Reload" / "Vaciar caché y recargar de forma forzada"
 ```
 
 ### Opción 2: Modo Incógnito
 ```
-1. Ctrl + Shift + N (nueva ventana incógnito)
-2. Abrir tu aplicación
+1. Ctrl + Shift + N (Windows/Linux) o Cmd + Shift + N (Mac) - nueva ventana incógnito
+2. Abrir tu aplicación en Render
 3. Si funciona aquí, ES problema de caché
 ```
 
 ### Opción 3: Deshabilitar caché
 ```
 1. F12 (DevTools)
-2. Pestaña "Network"
-3. Marcar ☑️ "Disable cache"
+2. Pestaña "Network" / "Red"
+3. Marcar ☑️ "Disable cache" / "Desactivar caché"
 4. Mantener DevTools abierto
 5. Recargar la página
 ```
@@ -93,11 +96,11 @@ En la pestaña "Elements" de DevTools:
 
 ### Verificar que app.css se carga:
 
-En DevTools > Network:
+En DevTools > Network / Red:
 1. Recarga la página
-2. Busca `app.css` en la lista
-3. Click en él
-4. Ve a la pestaña "Response"
+2. Busca `app.css` o archivos CSS en la lista (pueden estar en `/assets/` con hash)
+3. Click en el archivo CSS
+4. Ve a la pestaña "Response" / "Respuesta" o "Preview" / "Vista previa"
 5. Busca estas líneas:
 
 ```css
@@ -116,7 +119,7 @@ En DevTools > Network:
   overflow-y: scroll !important;
 ```
 
-Si NO ves estas líneas, el archivo viejo está en caché.
+Si NO ves estas líneas, verifica que el build en Render esté actualizado o que el navegador tenga el archivo viejo en caché.
 
 ## 📊 Valores Específicos Actuales:
 
@@ -159,17 +162,17 @@ Deberías ver ✅ TRUE en todos.
 
 ## 🆘 ÚLTIMO RECURSO
 
-Si NADA funciona, es posible que Brave esté usando Service Workers o caché muy agresivo.
+Si NADA funciona, es posible que el navegador esté usando Service Workers o caché muy agresivo.
 
 **Solución drástica:**
 1. Cierra TODAS las pestañas de tu aplicación
-2. En Brave, ve a `brave://serviceworker-internals/`
-3. Busca tu dominio (localhost:5173)
-4. Click en "Unregister"
-5. Ve a `brave://settings/clearBrowserData`
-6. Borrar TODO de "localhost"
-7. Reinicia Brave
-8. Abre de nuevo tu aplicación
+2. En Chrome/Brave, ve a `chrome://serviceworker-internals/` o `brave://serviceworker-internals/`
+3. Busca tu dominio de Render
+4. Click en "Unregister" / "Dar de baja"
+5. Ve a la configuración de borrar datos del navegador
+6. Borrar TODO de tu dominio de Render
+7. Reinicia el navegador
+8. Abre de nuevo tu aplicación en Render
 
 ---
 

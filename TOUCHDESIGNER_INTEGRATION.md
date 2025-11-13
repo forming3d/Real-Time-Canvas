@@ -7,7 +7,7 @@ Este documento resume la configuración recomendada para recibir el canvas en un
 2. **Movie File In TOP** llamado `canvas_in` (o deja que el script busque el primero disponible).
 3. Opcional: un **Text TOP/DAT** llamado `prompt` para mostrar los prompts enviados desde la app.
 
-El WebSocket debe apuntar a `ws://HOST:PUERTO?room=XXXXXX` (o `wss://` en producción). Puedes reutilizar el código de sala que muestra la interfaz web.
+El WebSocket debe apuntar a `wss://TU_DOMINIO_RENDER.onrender.com/ws?room=XXXXXX` (usa `wss://` para conexiones seguras en Render). Puedes reutilizar el código de sala que muestra la interfaz web.
 
 ## Script de callbacks (`websocket1_callbacks.py`)
 ```python
